@@ -1,0 +1,27 @@
+{
+  "watch": [
+    "server.js",
+    "routes/",
+    "models/",
+    "config/",
+    "services/",
+    "utils/",
+    ".env"
+  ],
+  "ext": "js,json,env",
+  "ignore": [
+    "node_modules/",
+    "client/",
+    "test/",
+    "*.test.js"
+  ],
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "colours": true,
+  "delay": 1000,
+  "verbose": true,
+  "events": {
+    "restart": "clear && echo '🔄 Server restarting due to file changes...' && echo ''"
+  }
+}

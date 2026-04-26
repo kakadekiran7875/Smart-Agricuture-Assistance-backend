@@ -1,0 +1,513 @@
+
+===========================================================
+   SMART AGRICULTURE ASSISTANT - BACKEND PROJECT INFO
+   Created for: ChatGPT / Study Reference
+   Date: February 2026
+===========================================================
+
+---------------------------------------------------------
+SECTION 1: WHAT IS THIS PROJECT?
+---------------------------------------------------------
+
+This is a BACKEND SERVER for a Smart Agriculture Assistant App.
+
+- It helps FARMERS with agriculture-related questions.
+- It is built using NODE.JS + EXPRESS + MONGODB.
+- It supports MARATHI LANGUAGE for Indian farmers.
+- It runs on PORT 5001 on the computer.
+- The frontend (mobile/web app) talks to this backend using API calls.
+
+Think of it like this:
+   Farmer App (Frontend) --> sends request --> Backend Server --> gives answer back
+
+
+---------------------------------------------------------
+SECTION 2: TECHNOLOGIES USED
+---------------------------------------------------------
+
+1. Node.js       = The runtime environment (like an engine to run JavaScript on server)
+2. Express.js    = Web framework (handles HTTP requests and routes)
+3. MongoDB       = Database (stores all data like experts, stores, soil data)
+4. Mongoose      = Tool to connect Node.js to MongoDB easily
+5. Dotenv        = Reads secret settings from .env file
+6. CORS          = Allows frontend app to connect to this backend
+7. Multer        = Handles image file uploads (for plant disease photos)
+8. Axios         = Makes HTTP requests to external APIs (like weather)
+9. Nodemon       = Auto-restarts server when code changes (for development)
+
+
+---------------------------------------------------------
+SECTION 3: HOW TO START THE SERVER
+---------------------------------------------------------
+
+Step 1: Open terminal in the project folder
+Step 2: Run this command:
+
+        npm run dev       (for development - auto-restarts on changes)
+        OR
+        npm start         (for production - normal start)
+
+Step 3: Server starts on:  http://localhost:5001
+Step 4: Test it by opening: http://localhost:5001/health
+
+
+---------------------------------------------------------
+SECTION 4: MAIN FILE - server.js
+---------------------------------------------------------
+
+This is the MOST IMPORTANT FILE. It does:
+
+1. Starts the Express web server on Port 5001
+2. Connects to MongoDB database (mongodb://localhost:27017/smartAgri)
+3. Loads all route files (crop, weather, pest, etc.)
+4. Sets up CORS (allows any website to connect)
+5. Has a health check endpoint: GET /health
+6. Has error handling (handles crashes, port conflicts)
+7. Gracefully shuts down when stopped (Ctrl+C)
+
+Important Settings in server.js:
+- PORT = 5001 (can change in .env file)
+- MongoDB = connects to local database
+- If MongoDB fails = server still runs with mock data (no crash)
+
+
+---------------------------------------------------------
+SECTION 5: CONFIG FILES
+---------------------------------------------------------
+
+FILE: .env or config.env
+- Stores SECRET settings (never share this file)
+- Contains: MongoDB URL, Port number, API keys, IP addresses
+
+FILE: nodemon.json
+- Settings for nodemon (tells it which files to watch/ignore)
+
+FILE: package.json
+- Project info and list of all packages/dependencies
+- Important commands:
+    npm start         = start server
+    npm run dev       = start with auto-restart
+    npm run init-db   = add sample data to database
+
+
+---------------------------------------------------------
+SECTION 6: MODELS FOLDER (7 Files)
+---------------------------------------------------------
+
+Models = Database Table Definitions (what data looks like)
+Location: /models/
+
+1. Expert.js
+   - Stores agricultural expert information
+   - Fields: name, specialization, phone, email, location, availability, rating
+   - Example: Dr. Ramesh - Soil Expert - Available Mon-Fri
+
+2. ExpertRequest.js
+   - Stores when a farmer requests to talk to an expert
+   - Fields: farmerName, phone, expertId, problem description, status, date
+   - Status can be: pending, approved, completed, cancelled
+
+3. PestDetection.js
+   - Stores pest detection results
+   - Fields: image path, pest name, severity, treatment suggestions, date
+
+4. Query.js
+   - Stores farmer questions/queries
+   - Fields: question text, answer, language, date
+
+5. SoilAnalysis.js
+   - Stores soil test results
+   - Fields: pH level, nitrogen, phosphorus, potassium, moisture, recommendations
+
+6. Store.js
+   - Stores agriculture shop information
+   - Fields: store name, address, phone, location coordinates, products, category
+
+7. SystemConfig.js
+   - Stores system-level settings
+   - Fields: config key, config value, description
+
+
+---------------------------------------------------------
+SECTION 7: ROUTES FOLDER (13 Files)
+---------------------------------------------------------
+
+Routes = API Endpoints (URLs that the frontend calls)
+Location: /routes/
+
+1. cropRoutes.js --> /api/crop
+   - POST /api/crop/recommend = recommends crops based on soil and weather
+   - Input: soil type, location, season
+   - Output: list of recommended crops
+
+2. fertilizerRoutes.js --> /api/fertilizer
+   - POST /api/fertilizer/recommend = recommends fertilizers
+   - Input: crop type, soil analysis results
+   - Output: fertilizer name, quantity, schedule
+
+3. soilRoutes.js --> /api/soil
+   - POST /api/soil/analyze = analyzes soil data
+   - Input: soil test values (pH, NPK)
+   - Output: soil health status and recommendations
+
+4. pestRoutes.js --> /api/pest
+   - POST /api/pest/detect = detects pests from description
+   - Input: symptoms, crop type
+   - Output: pest name, treatment, prevention tips
+
+5. diseaseRoutes.js --> /detect
+   - POST /detect = detects plant disease from IMAGE
+   - Input: plant photo (uploaded image)
+   - Output: disease name, severity, treatment
+   - GET /detect/list = list of all known diseases
+
+6. weatherRoutes.js --> /api/weather
+   - GET /api/weather/:location = gets weather data
+   - Input: city/village name
+   - Output: temperature, rainfall, humidity, farming advice
+
+7. marketRoutes.js --> /api/market
+   - GET /api/market/prices = current crop market prices
+   - Output: crop name, price per quintal, market location
+
+8. aiRoutes.js --> /api/ai
+   - POST /api/ai/chat = AI-powered chat response
+   - Input: user message/question
+   - Output: AI-generated farming advice
+
+9. chatbotRoutes.js --> /api/chatbot
+   - POST /api/chatbot/chat = Chatbot conversation
+   - POST /api/chatbot/advice = Get specific advice
+   - GET /api/chatbot/tips = Get farming tips of the day
+
+10. expertRoutes.js --> /api/expert
+    - GET /api/expert/list = list all available experts
+    - GET /api/expert/:id = get one expert's details
+    - POST /api/expert/contact = send message to expert
+    - POST /api/expert/book-consultation = book a meeting
+    - GET /api/expert/:id/availability = check expert's free slots
+
+11. expertRequestRoutes.js --> /api/expert-request
+    - POST /api/expert-request/request = submit a new expert request
+    - GET /api/expert-request/request/:requestId = check request status
+    - POST /api/expert-request/request/:requestId/cancel = cancel a request
+    - GET /api/expert-request/requests/all = view all requests (admin)
+
+12. storeRoutes.js --> /api/stores
+    - POST /api/stores/nearby = find stores near a location
+    - GET /api/stores/:id = get one store's details
+    - GET /api/stores/categories/list = list store categories
+
+13. systemConfigRoutes.js --> /api/system
+    - POST /api/system/init-config = initialize system settings
+    - GET /api/system/config = get current settings
+    - PUT /api/system/update-config = update settings
+
+
+---------------------------------------------------------
+SECTION 8: SERVICES FOLDER
+---------------------------------------------------------
+
+FILE: services/agricultureService.js
+- Contains the SMART BUSINESS LOGIC
+- Does actual calculations and recommendations
+- Examples:
+    * Calculates which crops grow best in given conditions
+    * Determines fertilizer amounts based on soil data
+    * Processes weather data for farming advice
+- Routes call this service and return results to user
+
+
+---------------------------------------------------------
+SECTION 9: UTILS FOLDER
+---------------------------------------------------------
+
+FILE: utils/translations.js
+- Contains Marathi language translations
+- Converts English text to Marathi
+- Makes the app usable for Marathi-speaking farmers
+- Example: "Crop Recommendation" --> "पीक शिफारस"
+
+
+---------------------------------------------------------
+SECTION 10: UPLOADS FOLDER
+---------------------------------------------------------
+
+- Stores images uploaded by farmers
+- Example: farmer uploads photo of diseased plant
+- Multer package saves the image here
+- Disease detection API reads image from this folder
+
+
+---------------------------------------------------------
+SECTION 11: DATABASE INITIALIZATION FILES
+---------------------------------------------------------
+
+These files ADD SAMPLE DATA to the database:
+
+1. init-db-native.js   (BEST - USE THIS ONE)
+   - Uses native MongoDB driver (most reliable)
+   - Adds 5 sample experts to database
+   - Adds 2 sample stores to database
+   - Run with: node init-db-native.js
+
+2. init-database.js    (Original version - uses Mongoose)
+   - Adds crops, fertilizers, experts, stores data
+   - Run with: npm run init-db
+
+3. init-database-fixed.js  (Fixed version of above)
+   - More reliable version of init-database.js
+
+4. reset-database.js   (DANGER - clears all data!)
+   - Deletes everything from database
+   - Run with: node reset-database.js
+   - Use only when you want to start fresh
+
+
+---------------------------------------------------------
+SECTION 12: TESTING FILES
+---------------------------------------------------------
+
+Files to test if everything is working:
+
+1. test-mongo.js
+   - Tests if MongoDB connection works
+   - Run: node test-mongo.js
+
+2. test-operations.js
+   - Tests database read/write operations
+   - Run: node test-operations.js
+
+3. test-api.ps1 (PowerShell)
+   - Tests all API endpoints
+   - Run in PowerShell: .\test-api.ps1
+
+4. test-fertilizer-api.html
+   - Open in browser to test fertilizer API
+   - Has buttons to test API visually
+
+5. check-database.js
+   - Shows what data is currently in database
+   - Run: node check-database.js
+
+6. check-mongo-status.js
+   - Checks if MongoDB server is running
+   - Run: node check-mongo-status.js
+
+7. test-mongoose-minimal.js
+   - Simple test to check Mongoose connection
+   - Run: node test-mongoose-minimal.js
+
+
+---------------------------------------------------------
+SECTION 13: WINDOWS BATCH FILES (.bat)
+---------------------------------------------------------
+
+Double-click these files to run easily on Windows:
+
+1. start-server.bat    = Starts the backend server
+2. kill-port.bat       = Frees port 5001 if it's stuck/busy
+3. test-connection.bat = Tests if server is reachable
+4. test-fertilizer.bat = Tests fertilizer API
+
+
+---------------------------------------------------------
+SECTION 14: ALL API ENDPOINTS (QUICK REFERENCE)
+---------------------------------------------------------
+
+BASE URL: http://localhost:5001
+
+GENERAL:
+   GET  /               = Welcome message + all endpoint list
+   GET  /health         = Check if server is running
+
+CROPS:
+   POST /api/crop/recommend    = Get crop recommendations
+
+FERTILIZER:
+   POST /api/fertilizer/recommend = Get fertilizer advice
+
+SOIL:
+   POST /api/soil/analyze      = Analyze soil data
+
+PEST:
+   POST /api/pest/detect       = Detect pests
+
+DISEASE (with IMAGE):
+   POST /detect                = Detect plant disease from photo
+   GET  /detect/list           = List all diseases
+   GET  /detect/info/:name     = Get info about specific disease
+
+WEATHER:
+   GET  /api/weather/:location = Get weather for a location
+
+MARKET:
+   GET  /api/market/prices     = Get current crop prices
+
+AI CHAT:
+   POST /api/ai/chat           = Chat with AI for farming advice
+   GET  /api/ai/status         = Check AI service status
+
+CHATBOT:
+   POST /api/chatbot/chat      = Chatbot conversation
+   POST /api/chatbot/advice    = Get specific farming advice
+   GET  /api/chatbot/tips      = Get farming tips
+
+EXPERTS:
+   GET  /api/expert/list                       = All experts
+   GET  /api/expert/:id                        = One expert
+   POST /api/expert/contact                    = Contact expert
+   POST /api/expert/book-consultation          = Book meeting
+   GET  /api/expert/:id/availability           = Check availability
+   POST /api/expert/init-experts               = Add sample experts
+
+EXPERT REQUESTS:
+   POST /api/expert-request/request                    = New request
+   GET  /api/expert-request/request/:requestId         = Check status
+   POST /api/expert-request/request/:requestId/cancel  = Cancel request
+   GET  /api/expert-request/requests/all               = All requests
+
+STORES:
+   POST /api/stores/nearby            = Find nearby stores
+   GET  /api/stores/:id               = Store details
+   GET  /api/stores/categories/list   = Store categories
+   POST /api/stores/init-sample-data  = Add sample stores
+
+SYSTEM:
+   POST /api/system/init-config     = Setup system config
+   GET  /api/system/config          = Get config
+   PUT  /api/system/update-config   = Update config
+
+
+---------------------------------------------------------
+SECTION 15: HOW DATA FLOWS (Simple Diagram)
+---------------------------------------------------------
+
+FARMER USES APP
+     |
+     | (sends HTTP request)
+     v
+BACKEND SERVER (server.js - Port 5001)
+     |
+     | (routes to correct handler)
+     v
+ROUTES FOLDER (e.g. cropRoutes.js)
+     |
+     | (calls business logic)
+     v
+SERVICES FOLDER (agricultureService.js)
+     |
+     | (reads/writes data)
+     v
+MONGODB DATABASE
+     |
+     | (returns data)
+     v
+ROUTES FOLDER (formats response)
+     |
+     | (sends back JSON response)
+     v
+FARMER GETS ANSWER ON APP
+
+
+---------------------------------------------------------
+SECTION 16: COMMON PROBLEMS & SOLUTIONS
+---------------------------------------------------------
+
+PROBLEM 1: MongoDB not connecting
+   SOLUTION: Make sure MongoDB is running
+   - Open Services (Windows) and start MongoDB
+   - Or run: mongod in a new terminal
+
+PROBLEM 2: Port 5001 already in use
+   SOLUTION: Run kill-port.bat
+   - Or run: netstat -ano | findstr :5001
+   - Then: taskkill /F /PID <number>
+
+PROBLEM 3: Server crashes immediately
+   SOLUTION: Check .env file has correct settings
+   - Make sure MONGODB_URI is correct
+
+PROBLEM 4: No data in database
+   SOLUTION: Run the init file
+   - node init-db-native.js
+
+PROBLEM 5: CORS error in browser
+   SOLUTION: Already handled! CORS is enabled for all origins in server.js
+
+
+---------------------------------------------------------
+SECTION 17: PROJECT FOLDER STRUCTURE
+---------------------------------------------------------
+
+Smart Agriculture Assistant backend/
+|
+|-- server.js              (MAIN FILE - starts everything)
+|-- package.json           (project info + dependencies)
+|-- .env                   (secret settings)
+|-- config.env             (same as .env - backup)
+|-- nodemon.json           (nodemon settings)
+|-- README.md              (project documentation)
+|-- .gitignore             (files to ignore in git)
+|
+|-- config/
+|   |-- database.js        (MongoDB connection setup)
+|
+|-- models/                (7 database schemas)
+|   |-- Expert.js
+|   |-- ExpertRequest.js
+|   |-- PestDetection.js
+|   |-- Query.js
+|   |-- SoilAnalysis.js
+|   |-- Store.js
+|   |-- SystemConfig.js
+|
+|-- routes/                (13 API route files)
+|   |-- aiRoutes.js
+|   |-- chatbotRoutes.js
+|   |-- cropRoutes.js
+|   |-- diseaseRoutes.js
+|   |-- expertRequestRoutes.js
+|   |-- expertRoutes.js
+|   |-- fertilizerRoutes.js
+|   |-- marketRoutes.js
+|   |-- pestRoutes.js
+|   |-- soilRoutes.js
+|   |-- storeRoutes.js
+|   |-- systemConfigRoutes.js
+|   |-- weatherRoutes.js
+|
+|-- services/
+|   |-- agricultureService.js   (business logic)
+|
+|-- utils/
+|   |-- translations.js         (Marathi translations)
+|
+|-- uploads/                    (uploaded images stored here)
+|
+|-- init-database.js            (seeds database with data)
+|-- init-database-fixed.js      (fixed version)
+|-- init-db-native.js           (best version - use this)
+|-- reset-database.js           (clears database)
+|
+|-- test-mongo.js               (test MongoDB)
+|-- test-operations.js          (test DB operations)
+|-- test-mongoose-minimal.js    (test Mongoose)
+|-- check-database.js           (check DB contents)
+|-- check-mongo-status.js       (check MongoDB status)
+|-- test-api.ps1                (test APIs - PowerShell)
+|-- test-fertilizer-api.html    (test fertilizer API - browser)
+|
+|-- start-server.bat            (start server - Windows)
+|-- kill-port.bat               (free port 5001 - Windows)
+|-- test-connection.bat         (test connection - Windows)
+|-- test-fertilizer.bat         (test fertilizer - Windows)
+|
+|-- node_modules/               (installed packages - auto-generated)
+
+
+===========================================================
+   END OF PROJECT INFO
+   This file was created for ChatGPT reference use.
+   Smart Agriculture Assistant Backend - 2026
+===========================================================
