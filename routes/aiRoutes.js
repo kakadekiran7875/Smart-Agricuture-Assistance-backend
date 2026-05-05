@@ -1,6 +1,136 @@
 import express from "express";
 import mongoose from "mongoose";
+import axios from "axios";
+import dotenv from "dotenv";
+
+dotenv.config();
 const router = express.Router();
+
+// API Keys
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+
+// Gemini API Configuration
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+
+// OpenAI API Configuration
+const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
+
+/**
+ * Call Gemini AI API (Free tier: 60 requests/minute)
+ * @param {string} question - User question
+ * @param {string} language - Language code
+ * @returns {object} AI response
+ */
+async function callGeminiAI(question, language) {
+  try {
+    if (!GEMINI_API_KEY) {
+      throw new Error("Gemini API key not configured");
+    }
+
+    const langNames = { en: "English", hi: "Hindi", mr: "Marathi", kn: "Kannada" };
+    const langName = langNames[language] || "English";
+
+    const prompt = `You are an expert Indian Agriculture Assistant. Answer the farmer's question in ${langName} language.
+
+Farmer's Question: ${question}
+
+Provide a helpful, practical answer focused on Indian farming conditions. Include specific advice when possible. Keep the response concise (2-3 sentences) and farmer-friendly.
+
+If the question is about:
+- Crop diseases: Describe symptoms and suggest organic/chemical treatments
+- Market prices: Give price ranges for common crops in Indian markets
+- Weather: Provide farming advice based on weather conditions
+- Fertilizers: Recommend specific NPK ratios and application methods
+- General farming: Share best practices and tips
+
+Response in ${langName}:`;
+
+    const response = await axios.post(
+      `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
+      {
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 500,
+          topP: 0.8,
+          topK: 40
+        }
+      },
+      {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 15000
+      }
+    );
+
+    if (response.data.candidates && response.data.candidates[0]?.content?.parts[0]?.text) {
+      return {
+        success: true,
+        answer: response.data.candidates[0].content.parts[0].text.trim(),
+        source: 'gemini'
+      };
+    }
+
+    throw new Error("Invalid response from Gemini API");
+  } catch (error) {
+    console.error("❌ Gemini AI error:", error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Call OpenAI API (Fallback)
+ * @param {string} question - User question
+ * @param {string} language - Language code
+ * @returns {object} AI response
+ */
+async function callOpenAI(question, language) {
+  try {
+    if (!OPENAI_API_KEY) {
+      throw new Error("OpenAI API key not configured");
+    }
+
+    const langNames = { en: "English", hi: "Hindi", mr: "Marathi", kn: "Kannada" };
+    const langName = langNames[language] || "English";
+
+    const systemPrompt = `You are an expert Indian Agriculture Assistant. Answer in ${langName} language. Provide practical, farmer-friendly advice for Indian farming conditions. Keep responses concise (2-3 sentences).`;
+
+    const response = await axios.post(
+      OPENAI_API_URL,
+      {
+        model: "gpt-3.5-turbo",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: question }
+        ],
+        temperature: 0.7,
+        max_tokens: 500
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      }
+    );
+
+    if (response.data.choices && response.data.choices[0]?.message?.content) {
+      return {
+        success: true,
+        answer: response.data.choices[0].message.content.trim(),
+        source: 'openai'
+      };
+    }
+
+    throw new Error("Invalid response from OpenAI API");
+  } catch (error) {
+    console.error("❌ OpenAI error:", error.message);
+    return { success: false, error: error.message };
+  }
+}
 
 // AI Chat History Schema
 const chatHistorySchema = new mongoose.Schema({
@@ -60,45 +190,65 @@ router.post("/chat", async (req, res) => {
       });
     }
 
-    // Get language responses (default to English if language not supported)
-    const responses = AI_RESPONSES[language] || AI_RESPONSES['en'];
-    
-    // Convert question to lowercase for keyword matching
-    const questionLower = question.toLowerCase();
-    
-    // Keyword matching logic
-    let answer;
-    
-    if (questionLower.includes('hello') || questionLower.includes('hi') || 
-        questionLower.includes('नमस्कार') || questionLower.includes('नमस्ते') ||
-        questionLower.includes('ನಮಸ್ಕಾರ')) {
-      answer = responses.greeting;
+    console.log(`🤖 AI Chat: "${question}" (language: ${language})`);
+
+    let answer, source;
+
+    // Try Gemini AI first (Free: 60 req/min)
+    const geminiResult = await callGeminiAI(question, language);
+    if (geminiResult.success) {
+      answer = geminiResult.answer;
+      source = 'gemini';
+      console.log('✅ Gemini AI response received');
     }
-    else if (questionLower.includes('disease') || questionLower.includes('रोग') || 
-             questionLower.includes('ರೋಗ') || questionLower.includes('sick') ||
-             questionLower.includes('problem') || questionLower.includes('spots') ||
-             questionLower.includes('डाग') || questionLower.includes('कलೆ')) {
-      answer = responses.disease;
+    // Fallback to OpenAI
+    else if (OPENAI_API_KEY) {
+      const openaiResult = await callOpenAI(question, language);
+      if (openaiResult.success) {
+        answer = openaiResult.answer;
+        source = 'openai';
+        console.log('✅ OpenAI response received');
+      }
     }
-    else if (questionLower.includes('price') || questionLower.includes('market') || 
-             questionLower.includes('बाजार') || questionLower.includes('भाव') ||
-             questionLower.includes('ಮಾರುಕಟ್ಟೆ') || questionLower.includes('ಬೆಲೆ') ||
-             questionLower.includes('sell') || questionLower.includes('मंडी')) {
-      answer = responses.market;
-    }
-    else if (questionLower.includes('weather') || questionLower.includes('rain') || 
-             questionLower.includes('हवामान') || questionLower.includes('मौसम') ||
-             questionLower.includes('ಹವಾಮಾನ') || questionLower.includes('पाऊस') ||
-             questionLower.includes('ಮಳೆ')) {
-      answer = responses.weather;
-    }
-    else if (questionLower.includes('fertilizer') || questionLower.includes('खत') || 
-             questionLower.includes('उर्वरक') || questionLower.includes('ಗೊಬ್ಬರ') ||
-             questionLower.includes('nutrient') || questionLower.includes('soil')) {
-      answer = responses.fertilizer;
-    }
-    else {
-      answer = responses.default;
+
+    // Final fallback: keyword matching
+    if (!answer) {
+      console.log('⚠️  Using keyword fallback');
+      const responses = AI_RESPONSES[language] || AI_RESPONSES['en'];
+      const questionLower = question.toLowerCase();
+
+      if (questionLower.includes('hello') || questionLower.includes('hi') ||
+          questionLower.includes('नमस्कार') || questionLower.includes('नमस्ते') ||
+          questionLower.includes('ನಮಸ್ಕಾರ')) {
+        answer = responses.greeting;
+      }
+      else if (questionLower.includes('disease') || questionLower.includes('रोग') ||
+               questionLower.includes('ರೋಗ') || questionLower.includes('sick') ||
+               questionLower.includes('problem') || questionLower.includes('spots') ||
+               questionLower.includes('डाग') || questionLower.includes('ಕಲೆ')) {
+        answer = responses.disease;
+      }
+      else if (questionLower.includes('price') || questionLower.includes('market') ||
+               questionLower.includes('बाजार') || questionLower.includes('भाव') ||
+               questionLower.includes('ಮಾರುಕಟ್ಟೆ') || questionLower.includes('ಬೆಲೆ') ||
+               questionLower.includes('sell') || questionLower.includes('मंडी')) {
+        answer = responses.market;
+      }
+      else if (questionLower.includes('weather') || questionLower.includes('rain') ||
+               questionLower.includes('हवामान') || questionLower.includes('मौसम') ||
+               questionLower.includes('ಹವಾಮಾನ') || questionLower.includes('पाऊस') ||
+               questionLower.includes('ಮಳೆ')) {
+        answer = responses.weather;
+      }
+      else if (questionLower.includes('fertilizer') || questionLower.includes('खत') ||
+               questionLower.includes('उर्वरक') || questionLower.includes('ಗೊಬ್ಬರ') ||
+               questionLower.includes('nutrient') || questionLower.includes('soil')) {
+        answer = responses.fertilizer;
+      }
+      else {
+        answer = responses.default;
+      }
+      source = 'keyword-fallback';
     }
 
     // 💾 Save chat history to database
@@ -106,7 +256,8 @@ router.post("/chat", async (req, res) => {
       const chatHistory = new ChatHistory({
         question,
         answer,
-        language
+        language,
+        source
       });
       await chatHistory.save();
       console.log('✅ Chat history saved to database');
@@ -116,17 +267,19 @@ router.post("/chat", async (req, res) => {
 
     // Return response
     res.json({
+      success: true,
       question,
       answer,
       language,
+      source,
       timestamp: new Date().toISOString()
     });
 
   } catch (error) {
     console.error('AI Chat Error:', error);
-    res.status(500).json({ 
-      error: "Internal server error", 
-      message: error.message 
+    res.status(500).json({
+      error: "Internal server error",
+      message: error.message
     });
   }
 });
@@ -137,11 +290,18 @@ router.get("/status", (req, res) => {
     status: "online",
     service: "AI Farm Assistant",
     languages: ["en", "kn", "hi", "mr"],
+    ai_providers: {
+      gemini: { available: !!GEMINI_API_KEY, type: "Free (60 req/min)" },
+      openai: { available: !!OPENAI_API_KEY, type: "Paid" },
+      fallback: { available: true, type: "Keyword matching" }
+    },
     features: [
+      "AI-powered crop advice (Gemini/OpenAI)",
       "Crop disease identification",
       "Market price information",
       "Weather advisory",
-      "Fertilizer recommendations"
+      "Fertilizer recommendations",
+      "Multi-language support"
     ]
   });
 });

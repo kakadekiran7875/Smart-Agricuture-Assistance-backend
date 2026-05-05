@@ -5,12 +5,16 @@ import dotenv from "dotenv";
 dotenv.config();
 const router = express.Router();
 
-// OpenAI API Configuration
+// API Keys
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+
+// API URLs
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 
-// System prompt for agricultural assistant
-const SYSTEM_PROMPT = `You are an expert agricultural assistant for Indian farmers. You provide helpful advice on:
+// System prompts for agricultural assistant
+const SYSTEM_PROMPT_OPENAI = `You are an expert agricultural assistant for Indian farmers. You provide helpful advice on:
 - Crop cultivation and farming techniques
 - Disease identification and treatment
 - Weather-based farming recommendations
@@ -21,56 +25,91 @@ const SYSTEM_PROMPT = `You are an expert agricultural assistant for Indian farme
 
 Always provide practical, actionable advice in simple language. Be supportive and encouraging to farmers.`;
 
-// POST: Chat with AI Assistant
-router.post("/chat", async (req, res) => {
+/**
+ * Call Gemini AI API
+ * @param {string} message - User message
+ * @param {string} language - Language code
+ * @returns {object} AI response
+ */
+async function callGeminiChatbot(message, language) {
   try {
-    const { message, language, conversationHistory } = req.body;
-
-    if (!message) {
-      return res.status(400).json({
-        success: false,
-        error: "Message is required"
-      });
+    if (!GEMINI_API_KEY) {
+      throw new Error("Gemini API key not configured");
     }
 
-    console.log("🤖 AI Chatbot request received");
-    console.log(`📝 Message: ${message.substring(0, 50)}...`);
+    const langNames = { en: "English", hi: "Hindi", mr: "Marathi", kn: "Kannada" };
+    const langName = langNames[language] || "English";
 
-    // Check if API key is available
-    if (!OPENAI_API_KEY) {
-      console.log("⚠️  No OpenAI API key, returning fallback response");
-      return res.json({
+    const prompt = `You are an expert agricultural assistant for Indian farmers. Answer in ${langName} language.
+
+Farmer's Question: ${message}
+
+Provide practical, actionable advice in simple language. Be supportive and encouraging. Keep response concise (2-4 sentences).
+
+Response in ${langName}:`;
+
+    const response = await axios.post(
+      `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
+      {
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 600,
+          topP: 0.8
+        }
+      },
+      {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 20000
+      }
+    );
+
+    if (response.data.candidates && response.data.candidates[0]?.content?.parts[0]?.text) {
+      return {
         success: true,
-        response: "I'm here to help with your farming questions! However, the AI service is currently unavailable. Please try again later or contact support.",
-        source: "fallback"
-      });
+        response: response.data.candidates[0].content.parts[0].text.trim(),
+        source: 'gemini'
+      };
     }
 
-    // Prepare conversation messages
+    throw new Error("Invalid response from Gemini API");
+  } catch (error) {
+    console.error("❌ Gemini chatbot error:", error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Call OpenAI API
+ * @param {string} message - User message
+ * @param {Array} conversationHistory - Previous messages
+ * @returns {object} AI response
+ */
+async function callOpenAIChatbot(message, conversationHistory) {
+  try {
+    if (!OPENAI_API_KEY) {
+      throw new Error("OpenAI API key not configured");
+    }
+
     const messages = [
-      { role: "system", content: SYSTEM_PROMPT }
+      { role: "system", content: SYSTEM_PROMPT_OPENAI }
     ];
 
-    // Add conversation history if provided
     if (conversationHistory && Array.isArray(conversationHistory)) {
       messages.push(...conversationHistory);
     }
 
-    // Add current user message
     messages.push({ role: "user", content: message });
 
-    // Call OpenAI API
-    console.log("🌐 Calling OpenAI API...");
     const response = await axios.post(
       OPENAI_API_URL,
       {
         model: "gpt-3.5-turbo",
         messages: messages,
-        max_tokens: 500,
-        temperature: 0.7,
-        top_p: 1,
-        frequency_penalty: 0,
-        presence_penalty: 0
+        max_tokens: 600,
+        temperature: 0.7
       },
       {
         headers: {
@@ -81,30 +120,75 @@ router.post("/chat", async (req, res) => {
       }
     );
 
-    const aiResponse = response.data.choices[0].message.content;
-    console.log("✅ AI response generated");
-    console.log(`📤 Response: ${aiResponse.substring(0, 50)}...`);
+    return {
+      success: true,
+      response: response.data.choices[0].message.content,
+      source: 'openai',
+      model: 'gpt-3.5-turbo',
+      usage: response.data.usage
+    };
+  } catch (error) {
+    console.error("❌ OpenAI chatbot error:", error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+// POST: Chat with AI Assistant
+router.post("/chat", async (req, res) => {
+  try {
+    const { message, language = 'en', conversationHistory } = req.body;
+
+    if (!message) {
+      return res.status(400).json({
+        success: false,
+        error: "Message is required"
+      });
+    }
+
+    console.log("🤖 AI Chatbot request received");
+    console.log(`📝 Message: ${message.substring(0, 50)}... (lang: ${language})`);
+
+    let result;
+
+    // Try Gemini AI first (Free: 60 req/min)
+    result = await callGeminiChatbot(message, language);
+    if (result.success) {
+      console.log(`✅ Gemini response: ${result.response.substring(0, 50)}...`);
+    }
+    // Fallback to OpenAI
+    else {
+      console.log("⚠️  Gemini failed, trying OpenAI...");
+      result = await callOpenAIChatbot(message, conversationHistory);
+      if (result.success) {
+        console.log(`✅ OpenAI response: ${result.response.substring(0, 50)}...`);
+      }
+    }
+
+    // Final fallback
+    if (!result || !result.success) {
+      result = {
+        success: true,
+        response: "I'm here to help with your farming questions! Ask me about crop diseases, market prices, weather, fertilizers, or any farming advice. I can assist in English, Hindi, Marathi, or Kannada.",
+        source: "fallback"
+      };
+    }
 
     res.json({
       success: true,
-      response: aiResponse,
-      source: "openai",
-      model: "gpt-3.5-turbo",
-      usage: response.data.usage
+      response: result.response,
+      source: result.source,
+      model: result.model || 'gemini-1.5-flash'
     });
 
   } catch (error) {
     console.error("❌ Chatbot error:", error.message);
 
-    // Fallback response on error
-    const fallbackResponse = {
+    res.json({
       success: true,
       response: "I apologize, but I'm having trouble processing your request right now. Please try again in a moment. In the meantime, you can explore our disease detection, weather forecast, and market prices features!",
       source: "fallback_error",
       error: error.message
-    };
-
-    res.json(fallbackResponse);
+    });
   }
 });
 
