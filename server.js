@@ -23,10 +23,34 @@ import systemConfigRoutes from "./routes/systemConfigRoutes.js";
 
 const app = express();
 
-// CORS Configuration - Allow all origins (for development)
+// CORS Configuration - Allow frontend and all local network origins
+const allowedOrigins = [
+  `http://${process.env.FRONTEND_IP || 'localhost'}:3000`,
+  `http://${process.env.FRONTEND_IP || 'localhost'}:5173`,
+  `http://${process.env.FRONTEND_IP || 'localhost'}:8080`,
+  `http://${process.env.BACKEND_IP || 'localhost'}:5001`,
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://localhost:8080',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:8080'
+];
+
 app.use(cors({
-  origin: true, // Allow all origins
-  credentials: true
+  origin: function(origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.DEBUG === 'true') {
+      return callback(null, true);
+    }
+    // In production, you might want to block unknown origins
+    // For now, allow all in development
+    callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 app.use(express.json());
 
@@ -93,9 +117,10 @@ app.get("/", (req, res) => {
     message: "🌾 Smart Agriculture Assistant API",
     status: "running",
     version: "1.0.0",
+    backendUrl: `http://${process.env.BACKEND_IP || 'localhost'}:${process.env.PORT || 5001}`,
+    frontendUrl: `http://${process.env.FRONTEND_IP || 'localhost'}:3000`,
     endpoints: {
       health: "/health (GET)",
-      crop: "/api/crop/recommend (POST)",
       soil: "/api/soil/analyze (POST)",
       fertilizer: "/api/fertilizer/recommend (POST)",
       pest: "/api/pest/detect (POST)",
@@ -172,10 +197,13 @@ const PORT = process.env.PORT || 5001;
 const HOST = process.env.API_HOST || '0.0.0.0';
 
 const server = app.listen(PORT, HOST, () => {
+  const backendUrl = `http://${process.env.BACKEND_IP || 'localhost'}:${PORT}`;
+  const localUrl = `http://localhost:${PORT}`;
   console.log(`✅ Server running on port ${PORT}`);
-  console.log(`🌐 Backend IP: ${process.env.BACKEND_IP || 'localhost'}`);
-  console.log(`🖥️  Frontend IP: ${process.env.FRONTEND_IP || 'localhost'}`);
-  console.log(`📊 Access API at: http://${process.env.BACKEND_IP || 'localhost'}:${PORT}`);
+  console.log(`🌐 Backend URL: ${backendUrl}`);
+  console.log(`🖥️  Local URL:   ${localUrl}`);
+  console.log(`� Connect frontend to: ${backendUrl}`);
+  console.log(`⚠️  Make sure MongoDB is running on ${process.env.DATABASE_IP || 'localhost'}`);
 });
 
 // Handle port already in use error
