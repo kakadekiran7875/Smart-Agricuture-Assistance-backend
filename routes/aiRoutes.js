@@ -2,6 +2,7 @@ import express from "express";
 import mongoose from "mongoose";
 import axios from "axios";
 import dotenv from "dotenv";
+import ChatHistory from "../models/ChatHistory.js";
 
 dotenv.config();
 const router = express.Router();
@@ -61,7 +62,7 @@ Response in ${langName}:`;
       },
       {
         headers: { 'Content-Type': 'application/json' },
-        timeout: 15000
+        timeout: 5000
       }
     );
 
@@ -113,7 +114,7 @@ async function callOpenAI(question, language) {
           'Authorization': `Bearer ${OPENAI_API_KEY}`,
           'Content-Type': 'application/json'
         },
-        timeout: 15000
+        timeout: 5000
       }
     );
 
@@ -132,15 +133,6 @@ async function callOpenAI(question, language) {
   }
 }
 
-// AI Chat History Schema
-const chatHistorySchema = new mongoose.Schema({
-  question: String,
-  answer: String,
-  language: String,
-  timestamp: { type: Date, default: Date.now }
-});
-
-const ChatHistory = mongoose.model('ChatHistory', chatHistorySchema);
 
 // AI Chat responses in multiple languages
 const AI_RESPONSES = {
@@ -304,6 +296,45 @@ router.get("/status", (req, res) => {
       "Multi-language support"
     ]
   });
+});
+
+// GET: Search AI chat history by keyword
+router.get("/search", async (req, res) => {
+  try {
+    const { query, language } = req.query;
+
+    console.log(`🔍 Searching AI chat history for: "${query || ''}" (lang: ${language || 'all'})`);
+
+    const filter = {};
+    
+    if (query) {
+      filter.$or = [
+        { question: { $regex: query, $options: 'i' } },
+        { answer: { $regex: query, $options: 'i' } }
+      ];
+    }
+
+    if (language) {
+      filter.language = language;
+    }
+
+    const results = await ChatHistory.find(filter).sort({ timestamp: -1 }).limit(100);
+
+    res.json({
+      success: true,
+      count: results.length,
+      query: query || '',
+      results: results
+    });
+
+  } catch (error) {
+    console.error("❌ AI chat search error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Search failed",
+      message: error.message
+    });
+  }
 });
 
 // GET: Retrieve all chat history from database

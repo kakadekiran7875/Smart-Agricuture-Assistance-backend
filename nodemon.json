@@ -22,6 +22,6 @@
   "delay": 1000,
   "verbose": true,
   "events": {
-    "restart": "clear && echo '🔄 Server restarting due to file changes...' && echo ''"
+    "restart": "cls && echo '🔄 Server restarting due to file changes...' && echo ''"
   }
 }

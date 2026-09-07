@@ -1,10 +1,10 @@
-// Drop and recreate the smartAgri database to clear locks
+// Drop and recreate the Demo database to clear locks
 import { MongoClient } from 'mongodb';
 
 const uri = "mongodb://localhost:27017";
-const dbName = "smartAgri";
+const dbName = "Demo";
 
-console.log('🗑️  Dropping smartAgri database to clear locks...\n');
+console.log('🗑️  Dropping Demo database to clear locks...\n');
 
 const client = new MongoClient(uri, { serverSelectionTimeoutMS: 5000 });
 

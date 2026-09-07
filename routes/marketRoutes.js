@@ -34,7 +34,7 @@ async function fetchRealMarketPrices(commodity, state) {
 
     const response = await axios.get(MARKET_API_URL, {
       params: params,
-      timeout: 10000
+      timeout: 4000
     });
 
     if (response.data && response.data.records) {
@@ -98,18 +98,20 @@ router.get("/market-prices", async (req, res) => {
     const marketPrices = {};
     
     if (MARKET_API_KEY) {
-      console.log("📊 Fetching real market prices for multiple crops...");
+      console.log("📊 Fetching real market prices for multiple crops in parallel...");
       
-      for (const crop of crops) {
-        const result = await fetchRealMarketPrices(crop, state);
-        
-        if (result.success && result.data.length > 0) {
-          const record = result.data[0]; // Get first record
-          const cropKey = crop.toLowerCase();
+      const results = await Promise.allSettled(
+        crops.map(crop => fetchRealMarketPrices(crop, state).then(res => ({ crop, res })))
+      );
+
+      for (const item of results) {
+        if (item.status === 'fulfilled' && item.value.res.success && item.value.res.data.length > 0) {
+          const record = item.value.res.data[0];
+          const cropKey = item.value.crop.toLowerCase();
           
           marketPrices[cropKey] = {
             price: parseFloat(record.modal_price) || 0,
-            change: 0, // Calculate from historical data if available
+            change: 0,
             market: record.market || "Unknown Market",
             state: record.state,
             minPrice: parseFloat(record.min_price) || 0,

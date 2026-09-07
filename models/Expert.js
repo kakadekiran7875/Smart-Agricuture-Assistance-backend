@@ -84,9 +84,8 @@ const expertSchema = new mongoose.Schema({
 });
 
 // Update the updated_at timestamp before saving
-expertSchema.pre('save', function(next) {
+expertSchema.pre('save', function() {
   this.updated_at = Date.now();
-  next();
 });
 
 const Expert = mongoose.model('Expert', expertSchema);

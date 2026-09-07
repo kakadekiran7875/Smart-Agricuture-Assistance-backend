@@ -12,8 +12,8 @@
     "install-client": "cd client && npm install",
     "build-client": "cd client && npm run build",
     "dev:all": "concurrently \"npm run dev\" \"npm run client\" --names \"BACKEND,FRONTEND\" --prefix-colors \"bgBlue.bold,bgMagenta.bold\"",
-    "test:disease": "node test-disease-detection.js",
-    "init-db": "node init-db-native.js"
+    "test:disease": "node tests/test-disease-detection.js",
+    "init-db": "node scripts/init-db-native.js"
   },
   "keywords": [
     "agriculture",

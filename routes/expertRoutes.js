@@ -81,8 +81,50 @@ const EXPERT_DATABASE = {
   ]
 };
 
+// Helper function to find expert from DB or fallback mock data
+async function findExpert(id) {
+  // Try MongoDB first if connected
+  try {
+    const query = {
+      $or: [
+        { expert_id: id },
+        { expert_id: typeof id === 'string' && !id.startsWith('EXP') ? `EXP${id.padStart(3, '0')}` : id }
+      ]
+    };
+    const dbExpert = await Expert.findOne(query);
+    if (dbExpert) {
+      return {
+        id: dbExpert.expert_id,
+        expert_id: dbExpert.expert_id,
+        name: dbExpert.name,
+        specialization: Array.isArray(dbExpert.specialization) ? dbExpert.specialization.join(", ") : dbExpert.specialization,
+        specializations: dbExpert.specialization,
+        category: dbExpert.category,
+        experience: dbExpert.experience,
+        location: dbExpert.location?.full || `${dbExpert.location?.city || ''}, ${dbExpert.location?.state || ''}`,
+        phone: dbExpert.contact?.phone || dbExpert.phone,
+        email: dbExpert.contact?.email || dbExpert.email,
+        languages: dbExpert.languages,
+        rating: typeof dbExpert.rating === 'number' ? dbExpert.rating : dbExpert.rating?.average || 4.8,
+        availability: dbExpert.availability?.status === 'available' ? 'Available' : 'Mon-Sat, 9 AM - 6 PM'
+      };
+    }
+  } catch (err) {
+    console.log("⚠️  MongoDB expert lookup error (falling back to mock):", err.message);
+  }
+
+  // Fallback to in-memory EXPERT_DATABASE
+  const numericId = parseInt(id);
+  for (const category of Object.values(EXPERT_DATABASE)) {
+    const exp = category.find(e => e.id === numericId || String(e.id) === String(id));
+    if (exp) return exp;
+  }
+
+  return null;
+}
+
 // GET: Get list of experts by specialization
-router.get("/list", (req, res) => {
+router.get("/list", async (req, res) => {
   try {
     const { specialization, location } = req.query;
 
@@ -90,18 +132,52 @@ router.get("/list", (req, res) => {
 
     let experts = [];
 
-    if (specialization && EXPERT_DATABASE[specialization.toLowerCase()]) {
-      experts = EXPERT_DATABASE[specialization.toLowerCase()];
-    } else {
-      // Return all experts
-      experts = Object.values(EXPERT_DATABASE).flat();
+    // Try MongoDB first
+    try {
+      const dbQuery = { active: true };
+      if (specialization) {
+        dbQuery.$or = [
+          { category: specialization.toLowerCase() },
+          { specialization: { $regex: specialization, $options: 'i' } }
+        ];
+      }
+      if (location) {
+        dbQuery['location.full'] = { $regex: location, $options: 'i' };
+      }
+
+      const dbExperts = await Expert.find(dbQuery).limit(50);
+      if (dbExperts && dbExperts.length > 0) {
+        experts = dbExperts.map(e => ({
+          id: e.expert_id,
+          name: e.name,
+          specialization: Array.isArray(e.specialization) ? e.specialization.join(", ") : e.specialization,
+          category: e.category,
+          experience: e.experience,
+          location: e.location?.full || `${e.location?.city || ''}, ${e.location?.state || ''}`,
+          phone: e.contact?.phone || e.phone,
+          email: e.contact?.email || e.email,
+          languages: e.languages,
+          rating: typeof e.rating === 'number' ? e.rating : e.rating?.average || 4.8,
+          availability: 'Available'
+        }));
+      }
+    } catch (dbErr) {
+      console.log("⚠️  MongoDB list error (using mock data):", dbErr.message);
     }
 
-    // Filter by location if provided
-    if (location) {
-      experts = experts.filter(expert => 
-        expert.location.toLowerCase().includes(location.toLowerCase())
-      );
+    // If no experts found in DB or DB not available, use EXPERT_DATABASE
+    if (experts.length === 0) {
+      if (specialization && EXPERT_DATABASE[specialization.toLowerCase()]) {
+        experts = EXPERT_DATABASE[specialization.toLowerCase()];
+      } else {
+        experts = Object.values(EXPERT_DATABASE).flat();
+      }
+
+      if (location) {
+        experts = experts.filter(expert => 
+          expert.location.toLowerCase().includes(location.toLowerCase())
+        );
+      }
     }
 
     console.log(`✅ Found ${experts.length} experts`);
@@ -124,17 +200,12 @@ router.get("/list", (req, res) => {
 });
 
 // GET: Get expert by ID
-router.get("/:id", (req, res) => {
+router.get("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     console.log(`👨‍🌾 Expert details request: ID ${id}`);
 
-    // Find expert in database
-    let expert = null;
-    for (const category of Object.values(EXPERT_DATABASE)) {
-      expert = category.find(e => e.id === parseInt(id));
-      if (expert) break;
-    }
+    const expert = await findExpert(id);
 
     if (!expert) {
       return res.status(404).json({
@@ -176,12 +247,7 @@ router.post("/contact", async (req, res) => {
     console.log(`📞 Contact request received`);
     console.log(`Expert ID: ${expertId}, Farmer: ${farmerName}`);
 
-    // Find expert
-    let expert = null;
-    for (const category of Object.values(EXPERT_DATABASE)) {
-      expert = category.find(e => e.id === parseInt(expertId));
-      if (expert) break;
-    }
+    const expert = await findExpert(expertId);
 
     if (!expert) {
       return res.status(404).json({
@@ -190,13 +256,6 @@ router.post("/contact", async (req, res) => {
       });
     }
 
-    // In a real system, this would:
-    // 1. Send notification to expert
-    // 2. Send confirmation to farmer
-    // 3. Store in database
-    // 4. Schedule callback
-
-    // For now, simulate successful submission
     const requestId = `REQ-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     console.log(`✅ Contact request submitted: ${requestId}`);
@@ -243,12 +302,7 @@ router.post("/book-consultation", async (req, res) => {
     console.log(`📅 Consultation booking request`);
     console.log(`Expert ID: ${expertId}, Type: ${consultationType}, Date: ${preferredDate}`);
 
-    // Find expert
-    let expert = null;
-    for (const category of Object.values(EXPERT_DATABASE)) {
-      expert = category.find(e => e.id === parseInt(expertId));
-      if (expert) break;
-    }
+    const expert = await findExpert(expertId);
 
     if (!expert) {
       return res.status(404).json({
@@ -257,7 +311,6 @@ router.post("/book-consultation", async (req, res) => {
       });
     }
 
-    // Generate booking ID
     const bookingId = `BOOK-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     console.log(`✅ Consultation booked: ${bookingId}`);
@@ -292,19 +345,14 @@ router.post("/book-consultation", async (req, res) => {
 });
 
 // GET: Get expert availability
-router.get("/:id/availability", (req, res) => {
+router.get("/:id/availability", async (req, res) => {
   try {
     const { id } = req.params;
     const { date } = req.query;
 
     console.log(`📅 Availability check: Expert ${id}, Date: ${date || 'today'}`);
 
-    // Find expert
-    let expert = null;
-    for (const category of Object.values(EXPERT_DATABASE)) {
-      expert = category.find(e => e.id === parseInt(id));
-      if (expert) break;
-    }
+    const expert = await findExpert(id);
 
     if (!expert) {
       return res.status(404).json({
@@ -313,7 +361,6 @@ router.get("/:id/availability", (req, res) => {
       });
     }
 
-    // Mock availability slots
     const availableSlots = [
       { time: "09:00 AM", available: true },
       { time: "10:00 AM", available: true },
@@ -327,7 +374,7 @@ router.get("/:id/availability", (req, res) => {
     res.json({
       success: true,
       expert: {
-        id: expert.id,
+        id: expert.id || expert.expert_id,
         name: expert.name,
         availability: expert.availability
       },
@@ -350,7 +397,6 @@ router.post("/init-experts", async (req, res) => {
   try {
     console.log(`👨‍🌾 Initializing expert database...`);
 
-    // Check if experts already exist
     const existingCount = await Expert.countDocuments();
     if (existingCount > 0) {
       return res.json({
@@ -360,7 +406,6 @@ router.post("/init-experts", async (req, res) => {
       });
     }
 
-    // Convert mock data to database format
     const expertsToInsert = [];
     let expertIdCounter = 1;
 
@@ -369,9 +414,10 @@ router.post("/init-experts", async (req, res) => {
         expertsToInsert.push({
           expert_id: `EXP${String(expertIdCounter).padStart(3, '0')}`,
           name: expert.name,
-          specialization: expert.specialization,
+          specialization: [expert.specialization],
           category: category,
           experience: expert.experience,
+          experience_years: parseInt(expert.experience) || 10,
           location: {
             full: expert.location
           },
@@ -379,12 +425,15 @@ router.post("/init-experts", async (req, res) => {
             phone: expert.phone,
             email: expert.email
           },
+          phone: expert.phone,
+          email: expert.email,
           languages: expert.languages,
-          rating: {
-            average: expert.rating,
-            total_reviews: Math.floor(Math.random() * 100) + 50
+          rating: expert.rating,
+          total_consultations: Math.floor(Math.random() * 500) + 100,
+          availability: {
+            status: 'available',
+            working_hours: { start: '09:00', end: '18:00' }
           },
-          availability: expert.availability,
           consultation_fee: {
             phone: 200,
             video: 500,
@@ -397,7 +446,6 @@ router.post("/init-experts", async (req, res) => {
       }
     }
 
-    // Insert experts into database
     const result = await Expert.insertMany(expertsToInsert);
 
     console.log(`✅ Inserted ${result.length} experts into database`);

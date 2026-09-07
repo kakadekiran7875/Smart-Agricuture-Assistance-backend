@@ -666,8 +666,8 @@ router.post("/detect", async (req, res) => {
         prevention_provided: detectedPest ? detectedPest.prevention : [],
         detection_success: !!detectedPest,
         user_info: {
-          ip_address: req.ip || req.connection.remoteAddress,
-          user_agent: req.get('user-agent')
+          ip_address: req.ip || req.socket?.remoteAddress || '',
+          user_agent: req.get('user-agent') || ''
         }
       });
 

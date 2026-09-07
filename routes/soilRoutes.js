@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import SoilAnalysis from "../models/SoilAnalysis.js";
 import { translateTerm } from "../utils/translations.js";
 
@@ -157,9 +158,8 @@ router.post("/analyze", async (req, res) => {
     try {
       const analysisId = `SOIL-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-      // Use native MongoDB driver instead of Mongoose model
-      const mongoose = await import('mongoose');
-      const db = mongoose.default.connection.db;
+      // Use native MongoDB driver if available
+      const db = mongoose.connection?.db;
 
       if (db) {
         const soilAnalysisDoc = {
@@ -179,8 +179,8 @@ router.post("/analyze", async (req, res) => {
           },
           overall_recommendation: overallRec,
           user_info: {
-            ip_address: req.ip || req.connection.remoteAddress,
-            user_agent: req.get('user-agent')
+            ip_address: req.ip || req.socket?.remoteAddress || '',
+            user_agent: req.get('user-agent') || ''
           },
           created_at: new Date()
         };

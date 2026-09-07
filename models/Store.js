@@ -91,9 +91,8 @@ const storeSchema = new mongoose.Schema({
 storeSchema.index({ location: '2dsphere' });
 
 // Update the updated_at timestamp before saving
-storeSchema.pre('save', function(next) {
+storeSchema.pre('save', function() {
   this.updated_at = Date.now();
-  next();
 });
 
 const Store = mongoose.model('Store', storeSchema);

@@ -8,11 +8,11 @@ router.post('/init-config', async (req, res) => {
   try {
     const configData = {
       config_id: 'system_config_v1',
-      backend_ip: '10.26.83.239',
-      frontend_ip: '10.26.83.239',
-      database_ip: '10.26.83.239',
-      port: 5001,
-      mongodb_uri: 'mongodb://localhost:27017/smartAgri'
+      backend_ip: process.env.BACKEND_IP || 'localhost',
+      frontend_ip: process.env.FRONTEND_IP || 'localhost',
+      database_ip: process.env.DATABASE_IP || 'localhost',
+      port: parseInt(process.env.PORT) || 5001,
+      mongodb_uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/Demo'
     };
 
     // Check if config already exists

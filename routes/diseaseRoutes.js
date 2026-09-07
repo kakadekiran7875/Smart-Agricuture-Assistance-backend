@@ -236,8 +236,25 @@ function analyzeImageFallback(filePath, fileSize, filename) {
   return { diseaseIndex, confidence: baseConfidence };
 }
 
-// POST: Disease Detection endpoint
-router.post("/", upload.single('image'), async (req, res) => {
+// POST: Disease Detection endpoint with error handling for multer
+router.post("/", (req, res, next) => {
+  upload.single('image')(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      return res.status(400).json({
+        success: false,
+        error: 'Upload error',
+        message: err.message
+      });
+    } else if (err) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid file',
+        message: err.message
+      });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({

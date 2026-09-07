@@ -27,3 +27,7 @@ client/build/
 __pycache__/
 *.py[cod]
 venv/
+
+# Uploads
+uploads/*
+!uploads/.gitkeep

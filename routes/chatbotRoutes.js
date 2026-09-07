@@ -1,9 +1,12 @@
 import express from "express";
 import axios from "axios";
 import dotenv from "dotenv";
+import ChatHistory from "../models/ChatHistory.js";
 
 dotenv.config();
 const router = express.Router();
+
+
 
 // API Keys
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
@@ -62,7 +65,7 @@ Response in ${langName}:`;
       },
       {
         headers: { 'Content-Type': 'application/json' },
-        timeout: 20000
+        timeout: 6000
       }
     );
 
@@ -116,7 +119,7 @@ async function callOpenAIChatbot(message, conversationHistory) {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${OPENAI_API_KEY}`
         },
-        timeout: 30000
+        timeout: 6000
       }
     );
 
@@ -171,6 +174,20 @@ router.post("/chat", async (req, res) => {
         response: "I'm here to help with your farming questions! Ask me about crop diseases, market prices, weather, fertilizers, or any farming advice. I can assist in English, Hindi, Marathi, or Kannada.",
         source: "fallback"
       };
+    }
+
+    // Save to database
+    try {
+      const chatLog = new ChatHistory({
+        question: message,
+        answer: result.response,
+        language: language,
+        source: result.source || 'gemini'
+      });
+      await chatLog.save();
+      console.log('✅ Chatbot conversation saved to database');
+    } catch (dbError) {
+      console.log('⚠️ Database save failed (continuing):', dbError.message);
     }
 
     res.json({
@@ -228,7 +245,7 @@ router.post("/advice", async (req, res) => {
       {
         model: "gpt-3.5-turbo",
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: SYSTEM_PROMPT_OPENAI },
           { role: "user", content: prompt }
         ],
         max_tokens: 400,
@@ -312,7 +329,7 @@ router.get("/tips", async (req, res) => {
       {
         model: "gpt-3.5-turbo",
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: SYSTEM_PROMPT_OPENAI },
           { role: "user", content: prompt }
         ],
         max_tokens: 300,
@@ -351,6 +368,63 @@ router.get("/tips", async (req, res) => {
         "Practice integrated pest management"
       ],
       source: "fallback_error"
+    });
+  }
+});
+
+// GET: Search chatbot history by keyword
+router.get("/search", async (req, res) => {
+  try {
+    const { query, language } = req.query;
+
+    console.log(`🔍 Searching chatbot history for: "${query || ''}" (lang: ${language || 'all'})`);
+
+    const filter = {};
+    
+    if (query) {
+      filter.$or = [
+        { question: { $regex: query, $options: 'i' } },
+        { answer: { $regex: query, $options: 'i' } }
+      ];
+    }
+
+    if (language) {
+      filter.language = language;
+    }
+
+    const results = await ChatHistory.find(filter).sort({ timestamp: -1 }).limit(100);
+
+    res.json({
+      success: true,
+      count: results.length,
+      query: query || '',
+      results: results
+    });
+
+  } catch (error) {
+    console.error("❌ Chat search error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Search failed",
+      message: error.message
+    });
+  }
+});
+
+// GET: Retrieve chatbot history
+router.get("/history", async (req, res) => {
+  try {
+    const results = await ChatHistory.find().sort({ timestamp: -1 }).limit(100);
+    res.json({
+      success: true,
+      count: results.length,
+      results: results
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: "Failed to retrieve history",
+      message: error.message
     });
   }
 });

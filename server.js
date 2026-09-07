@@ -3,8 +3,8 @@ import cors from "cors";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 
-// Load environment variables from config.env
-dotenv.config({ path: './config.env' });
+// Load environment variables
+dotenv.config();
 
 // Import routes
 import cropRoutes from "./routes/cropRoutes.js";
@@ -60,12 +60,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve static files (HTML, CSS, JS)
-app.use(express.static('.'));
+// Serve uploaded images securely
+app.use('/uploads', express.static('uploads'));
 
 // 🔗 MongoDB Connection - Local Database Server
 const MONGO_URI = process.env.MONGODB_URI ||
-  (process.env.DATABASE_IP ? `mongodb://${process.env.DATABASE_IP}:27017/smartAgri` : "mongodb://localhost:27017/smartAgri");
+  (process.env.DATABASE_IP ? `mongodb://${process.env.DATABASE_IP}:27017/Demo` : "mongodb://localhost:27017/Demo");
 console.log(`🔌 Connecting to MongoDB: ${MONGO_URI}`);
 
 // Set mongoose to not buffer commands when disconnected
@@ -168,7 +168,8 @@ app.use("/api/weather", weatherRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/detect", diseaseRoutes);
 app.use("/api/chatbot", chatbotRoutes);
-app.use("/api/expert", expertRoutes);
+app.use("/api/expert", expertRequestRoutes); // Handles /api/expert/request, /api/expert/requests/all
+app.use("/api/expert", expertRoutes);        // Handles /api/expert/list, /api/expert/:id, etc.
 app.use("/api/stores", storeRoutes);
 app.use("/api/expert-request", expertRequestRoutes);
 app.use("/api/system", systemConfigRoutes);
@@ -244,3 +245,6 @@ process.on('SIGINT', () => {
     });
   });
 });
+
+// Server initialized
+

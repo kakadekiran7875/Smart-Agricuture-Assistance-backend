@@ -42,9 +42,8 @@ const systemConfigSchema = new mongoose.Schema({
 });
 
 // Update the updated_at timestamp before saving
-systemConfigSchema.pre('save', function(next) {
+systemConfigSchema.pre('save', function() {
   this.updated_at = Date.now();
-  next();
 });
 
 const SystemConfig = mongoose.model('SystemConfig', systemConfigSchema);

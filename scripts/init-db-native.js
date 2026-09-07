@@ -4,8 +4,8 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const MONGO_URI = process.env.DATABASE_IP ? `mongodb://${process.env.DATABASE_IP}:27017` : (process.env.MONGODB_URI || process.env.MONGO_URI || "mongodb://localhost:27017");
-const DB_NAME = "smartAgri";
+const MONGO_URI = process.env.MONGODB_URI || (process.env.DATABASE_IP ? `mongodb://${process.env.DATABASE_IP}:27017` : "mongodb://localhost:27017");
+const DB_NAME = "Demo";
 
 console.log('🔌 Connecting to MongoDB (Native Driver)...');
 console.log(`📍 URI: ${MONGO_URI}/${DB_NAME}\n`);
@@ -289,6 +289,10 @@ async function initializeDatabase() {
         } else {
             console.log(`ℹ️  Database already has ${storeCount} stores`);
         }
+
+        // Ensure 2dsphere index exists on stores
+        await storesCollection.createIndex({ location: "2dsphere" });
+        console.log('✅ Created 2dsphere index on stores');
 
         console.log('\n✅ Database initialization complete!');
         console.log('\n📊 Summary:');

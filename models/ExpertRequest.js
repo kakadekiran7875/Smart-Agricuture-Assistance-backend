@@ -69,9 +69,8 @@ const expertRequestSchema = new mongoose.Schema({
 });
 
 // Update the updated_at timestamp before saving
-expertRequestSchema.pre('save', function(next) {
+expertRequestSchema.pre('save', function() {
   this.updated_at = Date.now();
-  next();
 });
 
 const ExpertRequest = mongoose.model('ExpertRequest', expertRequestSchema);
