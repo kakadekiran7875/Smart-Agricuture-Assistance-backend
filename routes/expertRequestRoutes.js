@@ -7,6 +7,9 @@ import Expert from "../models/Expert.js";
 dotenv.config();
 const router = express.Router();
 
+// In-memory request store for offline/degraded mode
+const inMemoryRequests = new Map();
+
 // Helper function: Generate unique request ID
 function generateRequestId() {
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -147,9 +150,20 @@ router.post("/request", async (req, res) => {
       follow_up_required: false
     };
 
-    // Save to database
-    const newRequest = new ExpertRequest(requestDoc);
-    await newRequest.save();
+    // Save to database or in-memory fallback
+    try {
+      if (mongoose.connection.readyState === 1) {
+        const newRequest = new ExpertRequest(requestDoc);
+        await newRequest.save();
+        console.log(`✅ Request saved to database: ${requestId}`);
+      } else {
+        console.log(`ℹ️ MongoDB disconnected; storing request ${requestId} in memory`);
+        inMemoryRequests.set(requestId, requestDoc);
+      }
+    } catch (dbErr) {
+      console.warn("⚠️ Database save failed, saving to in-memory store:", dbErr.message);
+      inMemoryRequests.set(requestId, requestDoc);
+    }
 
     console.log(`✅ Request created: ${requestId}`);
     console.log(`🎯 Priority: ${priority}`);
@@ -194,7 +208,18 @@ router.get("/request/:requestId", async (req, res) => {
     const { requestId } = req.params;
     console.log(`📋 Request status check: ${requestId}`);
 
-    const request = await ExpertRequest.findOne({ request_id: requestId });
+    let request = null;
+    if (mongoose.connection.readyState === 1) {
+      try {
+        request = await ExpertRequest.findOne({ request_id: requestId });
+      } catch (dbErr) {
+        console.log("⚠️ DB error fetching request, checking in-memory store:", dbErr.message);
+      }
+    }
+
+    if (!request) {
+      request = inMemoryRequests.get(requestId);
+    }
 
     if (!request) {
       return res.status(404).json({
@@ -274,9 +299,20 @@ router.get("/requests/all", async (req, res) => {
     if (status) query.status = status;
     if (priority) query.priority = priority;
 
-    const requests = await ExpertRequest.find(query)
-      .sort({ 'timestamps.created_at': -1 })
-      .limit(parseInt(limit) || 50);
+    let requests = [];
+    if (mongoose.connection.readyState === 1) {
+      try {
+        requests = await ExpertRequest.find(query)
+          .sort({ 'timestamps.created_at': -1 })
+          .limit(parseInt(limit) || 50);
+      } catch (dbErr) {
+        console.log("⚠️ DB error fetching requests, checking in-memory store:", dbErr.message);
+      }
+    }
+
+    if (requests.length === 0 && inMemoryRequests.size > 0) {
+      requests = Array.from(inMemoryRequests.values());
+    }
 
     console.log(`✅ Found ${requests.length} requests`);
 

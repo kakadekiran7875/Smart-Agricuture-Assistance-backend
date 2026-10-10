@@ -4,15 +4,17 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const MONGO_URI = process.env.MONGODB_URI || (process.env.DATABASE_IP ? `mongodb://${process.env.DATABASE_IP}:27017` : "mongodb://localhost:27017");
-const DB_NAME = "Demo";
+const rawMongoUri = process.env.MONGODB_URI || process.env.MONGO_URI || process.env.DATABASE_URL;
+const MONGO_URI = rawMongoUri || (process.env.DATABASE_IP ? `mongodb://${process.env.DATABASE_IP}:27017/Demo` : "mongodb://localhost:27017/Demo");
+const DB_NAME = process.env.DB_NAME || "Demo";
 
+const safeLogUri = (uri) => (typeof uri === 'string' ? uri.replace(/:([^@/]+)@/, ':****@') : uri);
 console.log('🔌 Connecting to MongoDB (Native Driver)...');
-console.log(`📍 URI: ${MONGO_URI}/${DB_NAME}\n`);
+console.log(`📍 URI: ${safeLogUri(MONGO_URI)}\n`);
 
 const client = new MongoClient(MONGO_URI, {
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 10000,
+    serverSelectionTimeoutMS: 10000,
+    socketTimeoutMS: 20000,
 });
 
 async function initializeDatabase() {

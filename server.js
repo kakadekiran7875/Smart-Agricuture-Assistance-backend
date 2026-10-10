@@ -63,42 +63,63 @@ app.use((req, res, next) => {
 // Serve uploaded images securely
 app.use('/uploads', express.static('uploads'));
 
-// 🔗 MongoDB Connection - Local Database Server
-const MONGO_URI = process.env.MONGODB_URI ||
-  (process.env.DATABASE_IP ? `mongodb://${process.env.DATABASE_IP}:27017/Demo` : "mongodb://localhost:27017/Demo");
-console.log(`🔌 Connecting to MongoDB: ${MONGO_URI}`);
+// 🔗 MongoDB Connection Configuration
+const rawMongoUri = process.env.MONGODB_URI || process.env.MONGO_URI || process.env.DATABASE_URL;
+const isCloudDeploy = !!(process.env.RENDER || process.env.RENDER_EXTERNAL_URL || process.env.PORT === '10000' || process.env.NODE_ENV === 'production');
+const isLocalFallback = !rawMongoUri;
 
-// Set mongoose to not buffer commands when disconnected
+const MONGO_URI = rawMongoUri ||
+  (process.env.DATABASE_IP ? `mongodb://${process.env.DATABASE_IP}:27017/Demo` : "mongodb://localhost:27017/Demo");
+
+// Helper to safely mask credentials in logs
+const safeLogUri = (uri) => (typeof uri === 'string' ? uri.replace(/:([^@/]+)@/, ':****@') : uri);
+
+// Configure Mongoose options
 mongoose.set('bufferCommands', false);
-mongoose.set('bufferTimeoutMS', 0); // No buffering at all
+mongoose.set('bufferTimeoutMS', 0);
 mongoose.set('strictQuery', false);
 
-mongoose
-  .connect(MONGO_URI, {
-    autoIndex: false, // Disable automatic index building
-    serverSelectionTimeoutMS: 30000, // Increased to 30 seconds
-    socketTimeoutMS: 45000,
-    connectTimeoutMS: 30000,
-  })
-  .then(() => {
-    console.log("✅ MongoDB connected successfully");
-    console.log(`📍 Database: ${MONGO_URI}`);
-    console.log(`🌐 Database IP: ${process.env.DATABASE_IP || '10.232.236.239'}`);
-  })
-  .catch((err) => {
-    console.log("⚠️  MongoDB not connected - Running without database");
-    console.log("💡 API endpoints will work with mock data");
-    console.log(`❌ Error: ${err.message}`);
+if (isCloudDeploy && isLocalFallback) {
+  console.log("☁️  Cloud deployment detected (Render / Production) without a remote MongoDB URI.");
+  console.log("💡 To connect a persistent database on Render:");
+  console.log("   1. Create a free cluster on MongoDB Atlas (https://cloud.mongodb.com)");
+  console.log("   2. Add MONGODB_URI in Render Dashboard -> Environment:");
+  console.log("      MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.xxx.mongodb.net/Demo?retryWrites=true&w=majority");
+  console.log("   3. In MongoDB Atlas Network Access, add IP: 0.0.0.0/0 (Allow access from anywhere)");
+  console.log("🛡️  Operating in fault-tolerant mode: All API endpoints are active with mock/fallback data.");
+} else {
+  const isCloudMongo = MONGO_URI.startsWith('mongodb+srv://') || MONGO_URI.includes('.mongodb.net');
+  console.log(`🔌 Connecting to MongoDB: ${safeLogUri(MONGO_URI)}`);
+
+  mongoose
+    .connect(MONGO_URI, {
+      autoIndex: false, // Disable automatic index building in production
+      serverSelectionTimeoutMS: isCloudMongo ? 15000 : 5000,
+      socketTimeoutMS: 45000,
+    })
+    .then((conn) => {
+      console.log(`✅ MongoDB connected successfully`);
+      console.log(`📊 Database: ${conn.connection.name || 'Demo'}`);
+      console.log(`🌐 Host: ${conn.connection.host}`);
+    })
+    .catch((err) => {
+      console.log("⚠️  MongoDB not connected - Running without database");
+      console.log("💡 API endpoints will work with mock and in-memory data");
+      console.log(`❌ Error: ${err.message}`);
+      if (isCloudMongo) {
+        console.log("💡 Atlas Tip: Make sure your IP address (0.0.0.0/0) is whitelisted in MongoDB Atlas Network Access.");
+      }
+    });
+
+  // Handle connection errors after initial connection
+  mongoose.connection.on('error', (err) => {
+    console.error('❌ MongoDB runtime error:', err.message);
   });
 
-// Handle connection errors after initial connection
-mongoose.connection.on('error', (err) => {
-  console.error('❌ MongoDB connection error:', err.message);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.log('⚠️  MongoDB disconnected');
-});
+  mongoose.connection.on('disconnected', () => {
+    console.log('⚠️  MongoDB disconnected');
+  });
+}
 
 // 🏥 Health check endpoint
 app.get("/health", (req, res) => {
@@ -198,13 +219,25 @@ const PORT = process.env.PORT || 5001;
 const HOST = process.env.API_HOST || '0.0.0.0';
 
 const server = app.listen(PORT, HOST, () => {
-  const backendUrl = `http://${process.env.BACKEND_IP || 'localhost'}:${PORT}`;
+  const isRender = !!(process.env.RENDER || process.env.RENDER_EXTERNAL_URL);
+  const publicUrl = process.env.RENDER_EXTERNAL_URL || `http://${process.env.BACKEND_IP || 'localhost'}:${PORT}`;
   const localUrl = `http://localhost:${PORT}`;
+
   console.log(`✅ Server running on port ${PORT}`);
-  console.log(`🌐 Backend URL: ${backendUrl}`);
-  console.log(`🖥️  Local URL:   ${localUrl}`);
-  console.log(`� Connect frontend to: ${backendUrl}`);
-  console.log(`⚠️  Make sure MongoDB is running on ${process.env.DATABASE_IP || 'localhost'}`);
+  if (process.env.RENDER_EXTERNAL_URL) {
+    console.log(`🌐 Live Production URL: ${process.env.RENDER_EXTERNAL_URL}`);
+    console.log(`🔗 Connect frontend to: ${process.env.RENDER_EXTERNAL_URL}`);
+  } else {
+    console.log(`🌐 Backend URL: ${publicUrl}`);
+    console.log(`🖥️  Local URL:   ${localUrl}`);
+    console.log(`🔗 Connect frontend to: ${publicUrl}`);
+  }
+
+  if (isCloudDeploy && isLocalFallback) {
+    console.log(`💡 MongoDB Status: Operating in fallback mock mode. Set MONGODB_URI on Render for live DB.`);
+  } else if (!isCloudDeploy) {
+    console.log(`💡 Local MongoDB: Ensure mongod is active on ${process.env.DATABASE_IP || 'localhost'}:27017`);
+  }
 });
 
 // Handle port already in use error
