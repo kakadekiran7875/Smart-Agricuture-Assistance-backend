@@ -1,19 +1,8 @@
 import express from "express";
 import mongoose from "mongoose";
+import CropData from "../models/CropData.js";
 import { translateCropName } from "../utils/translations.js";
 const router = express.Router();
-
-// Crop Data Schema
-const cropDataSchema = new mongoose.Schema({
-  nitrogen: Number,
-  phosphorus: Number,
-  recommendedCrop: String,
-  confidence: String,
-  alternativeCrops: [String],
-  timestamp: { type: Date, default: Date.now }
-});
-
-const CropData = mongoose.model('CropData', cropDataSchema);
 
 // Crop recommendation database with NPK requirements
 const CROP_DATABASE = {

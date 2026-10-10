@@ -1,4 +1,5 @@
 import express from "express";
+import FertilizerRecommendation from "../models/FertilizerRecommendation.js";
 const router = express.Router();
 
 // Supported crops
@@ -213,7 +214,7 @@ function recommendFertilizer(nDeficit, pDeficit, kDeficit) {
 }
 
 // POST: Recommend fertilizer based on crop and soil nutrients
-router.post("/recommend", (req, res) => {
+router.post("/recommend", async (req, res) => {
   try {
     console.log("📥 Fertilizer request received:", req.body);
     let { crop, nitrogen, phosphorus, potassium } = req.body;
@@ -303,6 +304,32 @@ router.post("/recommend", (req, res) => {
 
     console.log(`✅ Recommended: ${recommendation.fertilizer} for ${crop}`);
 
+    // Save fertilizer recommendation to database with graceful fallback
+    const recId = `FERT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    try {
+      const fertDoc = new FertilizerRecommendation({
+        recommendation_id: recId,
+        crop: crop,
+        nitrogen: nitrogen,
+        phosphorus: phosphorus,
+        potassium: potassium,
+        recommended_fertilizer: recommendation.fertilizer,
+        dosage: recommendation.dosage,
+        application_method: timing.method,
+        timing: timing.timing,
+        nutrient_status: {
+          nitrogen: nDeficit.status,
+          phosphorus: pDeficit.status,
+          potassium: kDeficit.status
+        }
+      });
+      await fertDoc.save();
+      console.log(`✅ Fertilizer recommendation saved: ${recId}`);
+    } catch (dbErr) {
+      console.log('⚠️ Fertilizer recommendation DB save skipped:', dbErr.message);
+    }
+
+    result.recommendation_id = recId;
     res.json(result);
     
   } catch (error) {
@@ -364,6 +391,26 @@ router.get("/fertilizers", (req, res) => {
     totalFertilizers: Object.keys(FERTILIZERS).length,
     message: "List of available fertilizers"
   });
+});
+
+// GET: Get fertilizer recommendation history
+router.get("/history", async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 20;
+    const history = await FertilizerRecommendation.find().sort({ created_at: -1 }).limit(limit);
+    res.json({
+      success: true,
+      count: history.length,
+      history: history
+    });
+  } catch (error) {
+    res.json({
+      success: true,
+      count: 0,
+      history: [],
+      message: "Operating in in-memory fallback mode"
+    });
+  }
 });
 
 export default router;

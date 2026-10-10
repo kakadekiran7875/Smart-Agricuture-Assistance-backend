@@ -67,16 +67,36 @@
 * Updated `scripts/init-db-native.js` to support MongoDB Atlas cloud URIs with timeout tuning and credential masking.
 * Enhanced server startup logs to automatically display Render production live URL (`RENDER_EXTERNAL_URL`).
 
+* Audited all database schemas and identified missing schemas.
+* Created `models/CropData.js` to decouple the inline crop recommendation schema from routes.
+* Created `models/DiseaseDetection.js` to store plant leaf disease scan results, treatments, and diagnostics history.
+* Created `models/FertilizerRecommendation.js` to track nutrient status, dosages, and application timing.
+* Created `models/MarketPrice.js` for commodity price tracking and caching.
+* Enhanced `models/SoilAnalysis.js` with optional NPK and moisture parameters for comprehensive soil testing.
+* Created `models/index.js` unified barrel export for all 12 models.
+* Integrated `DiseaseDetection` and `FertilizerRecommendation` into route handlers with graceful offline saving.
+* Added `GET /detect/history` and `GET /api/fertilizer/history` endpoints for farmer diagnosis and advisory history.
+
 ### Files Changed
 
 * `server.js`
 * `config/database.js`
 * `routes/storeRoutes.js`
 * `routes/expertRequestRoutes.js`
+* `routes/cropRoutes.js`
+* `routes/diseaseRoutes.js`
+* `routes/fertilizerRoutes.js`
+* `models/CropData.js`
+* `models/DiseaseDetection.js`
+* `models/FertilizerRecommendation.js`
+* `models/MarketPrice.js`
+* `models/SoilAnalysis.js`
+* `models/index.js`
 * `scripts/init-db-native.js`
 * `BACKEND_WORK_LOG.md`
 
 ### Status
 
 ✅ Completed & Production Ready
+
 

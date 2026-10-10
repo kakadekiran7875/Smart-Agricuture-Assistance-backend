@@ -18,6 +18,22 @@ const soilAnalysisSchema = new mongoose.Schema({
     min: 0,
     max: 10
   },
+  nitrogen: {
+    type: Number,
+    default: null
+  },
+  phosphorus: {
+    type: Number,
+    default: null
+  },
+  potassium: {
+    type: Number,
+    default: null
+  },
+  moisture: {
+    type: Number,
+    default: null
+  },
   soil_quality: {
     type: String,
     enum: ['Excellent', 'Good', 'Fair', 'Poor'],

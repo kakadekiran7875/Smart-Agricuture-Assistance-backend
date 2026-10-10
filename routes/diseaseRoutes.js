@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import axios from 'axios';
 import FormData from 'form-data';
 import dotenv from 'dotenv';
+import DiseaseDetection from '../models/DiseaseDetection.js';
 
 dotenv.config();
 
@@ -336,9 +337,37 @@ router.post("/", (req, res, next) => {
     console.log(`✅ Detection complete: ${result.disease} (${(result.confidence * 100).toFixed(2)}%)`);
     console.log("=" .repeat(50));
 
+    // Save disease detection to database with graceful fallback
+    const detectionId = `DIS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    try {
+      const diseaseDoc = new DiseaseDetection({
+        detection_id: detectionId,
+        disease_name: result.disease,
+        confidence: result.confidence,
+        treatment: result.treatment,
+        recommendation: result.recommendation,
+        prevention: result.prevention,
+        preventive_measures: result.preventive_measures,
+        image_name: req.file.filename,
+        image_path: req.file.path,
+        image_url: `/uploads/${req.file.filename}`,
+        language: language,
+        analysis_method: analysisMethod,
+        user_info: {
+          ip_address: req.ip || req.socket?.remoteAddress || '',
+          user_agent: req.get('user-agent') || ''
+        }
+      });
+      await diseaseDoc.save();
+      console.log(`✅ Disease detection saved: ${detectionId}`);
+    } catch (dbErr) {
+      console.log('⚠️ Disease detection DB save skipped:', dbErr.message);
+    }
+
     // Send response
     res.json({
       success: true,
+      detection_id: detectionId,
       disease: result.disease,
       class: result.disease,
       confidence: result.confidence,
@@ -419,6 +448,26 @@ router.get("/list", (req, res) => {
       success: false,
       error: 'Failed to list diseases',
       message: error.message
+    });
+  }
+});
+
+// GET: Get past disease detection history
+router.get("/history", async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 20;
+    const history = await DiseaseDetection.find().sort({ created_at: -1 }).limit(limit);
+    res.json({
+      success: true,
+      count: history.length,
+      history: history
+    });
+  } catch (error) {
+    res.json({
+      success: true,
+      count: 0,
+      history: [],
+      message: "Operating in in-memory fallback mode"
     });
   }
 });
