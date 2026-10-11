@@ -65,8 +65,18 @@ app.use('/uploads', express.static('uploads'));
 
 // 🔗 MongoDB Connection Configuration
 const rawMongoUri = process.env.MONGODB_URI || process.env.MONGO_URI || process.env.DATABASE_URL;
-const isCloudDeploy = !!(process.env.RENDER || process.env.RENDER_EXTERNAL_URL || process.env.PORT === '10000' || process.env.NODE_ENV === 'production');
-const isLocalFallback = !rawMongoUri;
+const isCloudDeploy = !!(
+  process.env.RENDER ||
+  process.env.RENDER_EXTERNAL_URL ||
+  process.env.RENDER_SERVICE_ID ||
+  process.env.PORT === '10000' ||
+  process.env.NODE_ENV === 'production'
+);
+
+const isLocalhostUri = !rawMongoUri ||
+  rawMongoUri.includes('localhost') ||
+  rawMongoUri.includes('127.0.0.1') ||
+  rawMongoUri.includes('::1');
 
 const MONGO_URI = rawMongoUri ||
   (process.env.DATABASE_IP ? `mongodb://${process.env.DATABASE_IP}:27017/Demo` : "mongodb://localhost:27017/Demo");
@@ -79,14 +89,14 @@ mongoose.set('bufferCommands', false);
 mongoose.set('bufferTimeoutMS', 0);
 mongoose.set('strictQuery', false);
 
-if (isCloudDeploy && isLocalFallback) {
-  console.log("☁️  Cloud deployment detected (Render / Production) without a remote MongoDB URI.");
+if (isCloudDeploy && isLocalhostUri) {
+  console.log("☁️  Cloud deployment detected (Render) without a remote MongoDB URI.");
   console.log("💡 To connect a persistent database on Render:");
   console.log("   1. Create a free cluster on MongoDB Atlas (https://cloud.mongodb.com)");
-  console.log("   2. Add MONGODB_URI in Render Dashboard -> Environment:");
+  console.log("   2. In Render Dashboard -> Environment, set MONGODB_URI to your Atlas connection string:");
   console.log("      MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.xxx.mongodb.net/Demo?retryWrites=true&w=majority");
   console.log("   3. In MongoDB Atlas Network Access, add IP: 0.0.0.0/0 (Allow access from anywhere)");
-  console.log("🛡️  Operating in fault-tolerant mode: All API endpoints are active with mock/fallback data.");
+  console.log("🛡️  Operating in fault-tolerant mode: All API endpoints are active with in-memory fallback data.");
 } else {
   const isCloudMongo = MONGO_URI.startsWith('mongodb+srv://') || MONGO_URI.includes('.mongodb.net');
   console.log(`🔌 Connecting to MongoDB: ${safeLogUri(MONGO_URI)}`);
