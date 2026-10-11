@@ -364,14 +364,41 @@ router.post("/", (req, res, next) => {
       console.log('⚠️ Disease detection DB save skipped:', dbErr.message);
     }
 
+    // Extract crop name and clean disease name
+    const diseaseName = result.disease || 'Unknown Disease';
+    const knownCrops = ['Tomato', 'Potato', 'Rice', 'Wheat', 'Cotton', 'Maize', 'Sugarcane', 'टोमॅटो', 'बटाटा', 'तांदूळ', 'गहू', 'कापूस'];
+    let detectedCrop = 'General Crop';
+    for (const c of knownCrops) {
+      if (diseaseName.toLowerCase().includes(c.toLowerCase())) {
+        detectedCrop = c;
+        break;
+      }
+    }
+
+    const structuredTreatment = (typeof result.treatment === 'object' && result.treatment !== null)
+      ? result.treatment
+      : {
+          organic: typeof result.treatment === 'string' ? result.treatment : 'Use neem-based bio-pesticides and organic compost',
+          chemical: typeof result.recommendation === 'string' ? result.recommendation : 'Apply recommended fungicide as per expert guidance'
+        };
+
+    const symptomsList = result.symptoms || [
+      'Discoloration or spots on leaves',
+      'Visible wilting or lesion development',
+      'Reduced plant vigor'
+    ];
+
     // Send response
     res.json({
       success: true,
       detection_id: detectionId,
+      crop: detectedCrop,
       disease: result.disease,
       class: result.disease,
       confidence: result.confidence,
-      treatment: result.treatment,
+      symptoms: symptomsList,
+      treatment: structuredTreatment,
+      treatment_text: typeof result.treatment === 'string' ? result.treatment : JSON.stringify(result.treatment),
       recommendation: result.recommendation,
       prevention: result.prevention,
       preventive_measures: result.preventive_measures,

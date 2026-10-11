@@ -14,6 +14,11 @@ const OPENMETEO_BASE_URL = "https://api.open-meteo.com/v1";
 
 // Geocoding API for Open-Meteo
 const GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search";
+const COORDINATE_CACHE_TTL_MS = 60 * 60 * 1000;
+const WEATHER_CACHE_TTL_MS = 10 * 60 * 1000;
+const coordinateCache = new Map();
+const weatherCache = new Map();
+const weatherRequestsInFlight = new Map();
 
 /**
  * Get coordinates for location name using Open-Meteo Geocoding
@@ -21,6 +26,12 @@ const GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search";
  * @returns {object} Latitude and longitude
  */
 async function getCoordinates(location) {
+  const cacheKey = location.trim().toLowerCase();
+  const cached = coordinateCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
   try {
     const response = await axios.get(GEOCODING_URL, {
       params: {
@@ -34,13 +45,18 @@ async function getCoordinates(location) {
 
     if (response.data.results && response.data.results.length > 0) {
       const result = response.data.results[0];
-      return {
+      const coordinates = {
         lat: result.latitude,
         lon: result.longitude,
         name: result.name,
         country: result.country,
         admin1: result.admin1 // State/Province
       };
+      coordinateCache.set(cacheKey, {
+        value: coordinates,
+        expiresAt: Date.now() + COORDINATE_CACHE_TTL_MS
+      });
+      return coordinates;
     }
     return null;
   } catch (error) {
@@ -54,7 +70,7 @@ async function getCoordinates(location) {
  * @param {string} location - Location name
  * @returns {object} Weather data
  */
-async function fetchOpenMeteoWeather(location) {
+async function fetchOpenMeteoWeatherUncached(location) {
   try {
     const coords = await getCoordinates(location);
     if (!coords) {
@@ -161,6 +177,41 @@ async function fetchOpenMeteoWeather(location) {
 }
 
 /**
+ * Fetch weather with a short-lived cache and request deduplication.
+ * This prevents repeated frontend requests from exhausting Open-Meteo's
+ * public rate limit while keeping weather data reasonably fresh.
+ */
+async function fetchOpenMeteoWeather(location) {
+  const cacheKey = location.trim().toLowerCase();
+  const cached = weatherCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  const inFlightRequest = weatherRequestsInFlight.get(cacheKey);
+  if (inFlightRequest) {
+    return inFlightRequest;
+  }
+
+  const request = fetchOpenMeteoWeatherUncached(location)
+    .then(result => {
+      if (result.success) {
+        weatherCache.set(cacheKey, {
+          value: result,
+          expiresAt: Date.now() + WEATHER_CACHE_TTL_MS
+        });
+      }
+      return result;
+    })
+    .finally(() => {
+      weatherRequestsInFlight.delete(cacheKey);
+    });
+
+  weatherRequestsInFlight.set(cacheKey, request);
+  return request;
+}
+
+/**
  * Generate farming advisory from Open-Meteo data
  */
 function generateAdvisoryFromOpenMeteo(current, forecast) {
@@ -216,13 +267,15 @@ router.get("/:location", async (req, res) => {
     // Try Open-Meteo first (Free, no API key needed)
     const openMeteoResult = await fetchOpenMeteoWeather(location);
     if (openMeteoResult.success) {
-      // Simplified response for old endpoint
+      // Response including forecast and rainfall for frontend
       return res.json({
         location: openMeteoResult.location.name,
         temperature: openMeteoResult.current.temperature,
         humidity: openMeteoResult.current.humidity,
+        rainfall: openMeteoResult.current.rainfall || 0,
         condition: openMeteoResult.current.condition,
         description: openMeteoResult.current.description,
+        forecast: openMeteoResult.forecast || [],
         feelsLike: openMeteoResult.current.feelsLike,
         windSpeed: openMeteoResult.current.windSpeed,
         pressure: openMeteoResult.current.pressure,
@@ -275,6 +328,7 @@ router.get("/:location", async (req, res) => {
       location: location,
       temperature: 31,
       humidity: 68,
+      rainfall: 0,
       condition: "Sunny",
       description: "clear sky",
       feelsLike: 33,
@@ -282,6 +336,11 @@ router.get("/:location", async (req, res) => {
       pressure: 1013,
       visibility: 10,
       cloudiness: 10,
+      forecast: [
+        { day: "Tomorrow", temp: "30°C", rain: "10%", condition: "Clear" },
+        { day: "Day 2", temp: "29°C", rain: "20%", condition: "Partly Cloudy" },
+        { day: "Day 3", temp: "31°C", rain: "0%", condition: "Sunny" }
+      ],
       source: 'demo',
       note: 'Demo data - Using sample weather values'
     });

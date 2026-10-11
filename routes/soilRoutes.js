@@ -112,21 +112,26 @@ function getOrganicCarbonClassification(organicCarbon) {
 // POST: Analyze soil quality
 router.post("/analyze", async (req, res) => {
   try {
-    const { ph, organicCarbon, language } = req.body;
+    const rawPh = req.body.ph;
+    const rawOC = req.body.organicCarbon !== undefined ? req.body.organicCarbon : (req.body.organic_carbon !== undefined ? req.body.organic_carbon : req.body.oc);
+    const language = req.body.language || 'en';
 
-    // Validation: Check if fields are present
-    if (ph === undefined || organicCarbon === undefined) {
+    // Validation: Check if pH is present
+    if (rawPh === undefined || rawPh === null) {
       return res.status(400).json({
         error: "Missing required fields",
-        message: "Both ph and organicCarbon are required"
+        message: "Soil pH (ph) is required"
       });
     }
 
-    // Validation: Check if values are numbers
-    if (typeof ph !== 'number' || typeof organicCarbon !== 'number') {
+    const ph = parseFloat(rawPh);
+    const organicCarbon = rawOC !== undefined ? parseFloat(rawOC) : 1.5;
+
+    // Validation: Check if values are valid numbers
+    if (isNaN(ph) || isNaN(organicCarbon)) {
       return res.status(400).json({
         error: "Invalid input parameters",
-        message: "pH and organicCarbon must be numbers"
+        message: "pH and organicCarbon must be valid numbers"
       });
     }
 

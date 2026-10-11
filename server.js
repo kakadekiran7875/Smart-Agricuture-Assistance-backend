@@ -97,10 +97,17 @@ if (isCloudDeploy && isLocalFallback) {
       serverSelectionTimeoutMS: isCloudMongo ? 15000 : 5000,
       socketTimeoutMS: 45000,
     })
-    .then((conn) => {
+    .then(async (conn) => {
       console.log(`✅ MongoDB connected successfully`);
       console.log(`📊 Database: ${conn.connection.name || 'Demo'}`);
       console.log(`🌐 Host: ${conn.connection.host}`);
+      // Ensure 2dsphere geospatial index exists for nearby store queries
+      try {
+        await conn.connection.db.collection('stores').createIndex({ location: '2dsphere' });
+        console.log(`📍 Geospatial 2dsphere index ready on stores`);
+      } catch (idxErr) {
+        console.log(`ℹ️  Index setup note: ${idxErr.message}`);
+      }
     })
     .catch((err) => {
       console.log("⚠️  MongoDB not connected - Running without database");
@@ -181,6 +188,7 @@ app.get("/", (req, res) => {
 
 // 🌾 All API routes
 app.use("/api/crop", cropRoutes);
+app.use("/api/crops", cropRoutes);           // Frontend alias
 app.use("/api/fertilizer", fertilizerRoutes);
 app.use("/api/market", marketRoutes);
 app.use("/api/pest", pestRoutes);
@@ -188,6 +196,7 @@ app.use("/api/soil", soilRoutes);
 app.use("/api/weather", weatherRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/detect", diseaseRoutes);
+app.use("/api/detect", diseaseRoutes);       // Frontend alias
 app.use("/api/chatbot", chatbotRoutes);
 app.use("/api/expert", expertRequestRoutes); // Handles /api/expert/request, /api/expert/requests/all
 app.use("/api/expert", expertRoutes);        // Handles /api/expert/list, /api/expert/:id, etc.

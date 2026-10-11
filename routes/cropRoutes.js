@@ -138,18 +138,23 @@ function getConfidence(score) {
 // POST: Recommend crop based on soil nutrients
 router.post("/recommend", async (req, res) => {
   try {
-    const { nitrogen, phosphorus, language } = req.body;
+    const rawN = req.body.nitrogen !== undefined ? req.body.nitrogen : req.body.n;
+    const rawP = req.body.phosphorus !== undefined ? req.body.phosphorus : req.body.p;
+    const language = req.body.language || 'en';
 
     // Validation: Check if fields are present
-    if (nitrogen === undefined || phosphorus === undefined) {
+    if (rawN === undefined || rawP === undefined) {
       return res.status(400).json({
         error: "Missing required fields",
         message: "Both nitrogen and phosphorus are required"
       });
     }
 
+    const nitrogen = parseFloat(rawN);
+    const phosphorus = parseFloat(rawP);
+
     // Validation: Check if values are numbers
-    if (typeof nitrogen !== 'number' || typeof phosphorus !== 'number') {
+    if (isNaN(nitrogen) || isNaN(phosphorus)) {
       return res.status(400).json({
         error: "Invalid input",
         message: "Nitrogen and phosphorus must be numbers"
@@ -190,17 +195,21 @@ router.post("/recommend", async (req, res) => {
     // Get top recommendation
     const topCrop = cropScores[0];
     const confidence = getConfidence(topCrop.score);
+    const numericConfidence = Math.round(topCrop.score) / 100;
 
     // Get alternative crops (next 2 best options)
     const alternativeCrops = cropScores.slice(1, 3).map(c => c.crop);
 
     const result = {
       recommendedCrop: topCrop.crop,
+      recommended_crops: [topCrop.crop, ...alternativeCrops],
       nitrogen: nitrogen,
       phosphorus: phosphorus,
       confidence: confidence,
+      confidenceScore: numericConfidence,
       alternativeCrops: alternativeCrops,
-      message: "Crop recommendation generated successfully",
+      message: `Optimal soil conditions for ${topCrop.crop} cultivation`,
+      explanation: `Optimal soil conditions for ${topCrop.crop} cultivation based on nutrient levels`,
       language: language || 'en'
     };
 

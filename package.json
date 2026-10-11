@@ -12,6 +12,8 @@
     "install-client": "cd client && npm install",
     "build-client": "cd client && npm run build",
     "dev:all": "concurrently \"npm run dev\" \"npm run client\" --names \"BACKEND,FRONTEND\" --prefix-colors \"bgBlue.bold,bgMagenta.bold\"",
+    "test": "node tests/test-all-apis.js",
+    "test:all": "node tests/test-all-apis.js",
     "test:disease": "node tests/test-disease-detection.js",
     "init-db": "node scripts/init-db-native.js"
   },

@@ -227,16 +227,26 @@ router.post("/recommend", async (req, res) => {
       });
     }
 
-    // Validation: Check if values are numbers
-    if (typeof nitrogen !== 'number' || typeof phosphorus !== 'number' || typeof potassium !== 'number') {
+    nitrogen = parseFloat(nitrogen);
+    phosphorus = parseFloat(phosphorus);
+    potassium = parseFloat(potassium);
+
+    // Validation: Check if values are valid numbers
+    if (isNaN(nitrogen) || isNaN(phosphorus) || isNaN(potassium)) {
       return res.status(400).json({ 
         error: "Invalid input",
         message: "Nitrogen, phosphorus, and potassium must be numbers" 
       });
     }
 
-    // Normalize crop name
-    crop = crop.charAt(0).toUpperCase() + crop.slice(1).toLowerCase();
+    // Normalize crop name (case-insensitive lookup)
+    const normalizedCropInput = crop.toString().trim();
+    const matchedCrop = SUPPORTED_CROPS.find(c => c.toLowerCase() === normalizedCropInput.toLowerCase());
+    if (matchedCrop) {
+      crop = matchedCrop;
+    } else {
+      crop = normalizedCropInput.charAt(0).toUpperCase() + normalizedCropInput.slice(1).toLowerCase();
+    }
 
     // Validation: Check if crop is supported
     if (!SUPPORTED_CROPS.includes(crop)) {

@@ -173,12 +173,14 @@ const AI_RESPONSES = {
 // POST: AI Chat endpoint
 router.post("/chat", async (req, res) => {
   try {
-    const { question, language = 'en' } = req.body;
+    // Support message (frontend), question, or query
+    const question = (req.body.message || req.body.question || req.body.query || '').toString().trim();
+    const language = req.body.language || 'en';
 
     // Validation
-    if (!question || typeof question !== 'string') {
+    if (!question) {
       return res.status(400).json({ 
-        error: "Question is required and must be a string" 
+        error: "Message is required and must not be empty" 
       });
     }
 
@@ -260,8 +262,9 @@ router.post("/chat", async (req, res) => {
     // Return response
     res.json({
       success: true,
-      question,
+      response: answer,
       answer,
+      question,
       language,
       source,
       timestamp: new Date().toISOString()

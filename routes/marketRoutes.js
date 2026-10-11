@@ -49,40 +49,65 @@ async function fetchRealMarketPrices(commodity, state) {
   }
 }
 
-// GET: Get market prices (old endpoint)
+// GET: Get market prices
 router.get("/prices", async (req, res) => {
   try {
     const { commodity, state } = req.query;
     
+    // Standard base commodity dictionary with realistic default rates
+    const commodityMap = {
+      tomato: { price: 28, min: 22, max: 32, unit: "kg", mandi: "Nashik APMC", market: "Nashik APMC", state: "Maharashtra" },
+      wheat: { price: 2650, min: 2400, max: 2800, unit: "quintal", mandi: "Pune APMC", market: "Pune APMC", state: "Maharashtra" },
+      onion: { price: 18, min: 14, max: 22, unit: "kg", mandi: "Lasalgaon APMC", market: "Lasalgaon APMC", state: "Maharashtra" },
+      potato: { price: 24, min: 20, max: 28, unit: "kg", mandi: "Kolhapur Market", market: "Kolhapur Market", state: "Maharashtra" },
+      rice: { price: 3200, min: 2900, max: 3500, unit: "quintal", mandi: "Nagpur Mandi", market: "Nagpur Mandi", state: "Maharashtra" },
+      cotton: { price: 7100, min: 6800, max: 7400, unit: "quintal", mandi: "Akola APMC", market: "Akola APMC", state: "Maharashtra" },
+      soybean: { price: 4400, min: 4100, max: 4700, unit: "quintal", mandi: "Latur Mandi", market: "Latur Mandi", state: "Maharashtra" }
+    };
+
     // Try real API first
     const apiResult = await fetchRealMarketPrices(commodity, state);
     
+    let pricesList = [];
     if (apiResult.success && apiResult.data.length > 0) {
-      // Format real API data
-      const prices = apiResult.data.map(record => ({
-        crop: record.commodity,
-        pricePerQuintal: parseFloat(record.modal_price) || 0,
-        market: record.market,
-        state: record.state,
-        district: record.district,
-        minPrice: parseFloat(record.min_price) || 0,
-        maxPrice: parseFloat(record.max_price) || 0,
-        arrivalDate: record.arrival_date,
-        source: 'data.gov.in'
-      }));
-
-      return res.json({ prices, source: 'real_api' });
+      pricesList = apiResult.data.map(record => {
+        const cKey = record.commodity?.toLowerCase();
+        if (commodityMap[cKey]) {
+          commodityMap[cKey].price = parseFloat(record.modal_price) || commodityMap[cKey].price;
+          commodityMap[cKey].min = parseFloat(record.min_price) || commodityMap[cKey].min;
+          commodityMap[cKey].max = parseFloat(record.max_price) || commodityMap[cKey].max;
+          commodityMap[cKey].mandi = record.market || commodityMap[cKey].mandi;
+          commodityMap[cKey].market = record.market || commodityMap[cKey].market;
+          commodityMap[cKey].state = record.state || commodityMap[cKey].state;
+        }
+        return {
+          crop: record.commodity,
+          pricePerQuintal: parseFloat(record.modal_price) || 0,
+          market: record.market,
+          state: record.state,
+          district: record.district,
+          minPrice: parseFloat(record.min_price) || 0,
+          maxPrice: parseFloat(record.max_price) || 0,
+          arrivalDate: record.arrival_date,
+          source: 'data.gov.in'
+        };
+      });
+    } else {
+      pricesList = [
+        { crop: "Tomato", pricePerQuintal: 2800, market: "Nashik APMC", state: "Maharashtra" },
+        { crop: "Wheat", pricePerQuintal: 2650, market: "Pune APMC", state: "Maharashtra" },
+        { crop: "Onion", pricePerQuintal: 1800, market: "Lasalgaon APMC", state: "Maharashtra" },
+        { crop: "Rice", pricePerQuintal: 3200, market: "Nagpur Mandi", state: "Maharashtra" },
+        { crop: "Potato", pricePerQuintal: 2400, market: "Kolhapur Market", state: "Maharashtra" }
+      ];
     }
-    
-    // Fallback to demo data
-    console.log("⚠️  Using demo market data");
-    const prices = [
-      { crop: "Rice", pricePerQuintal: 2800, market: "Demo Market", state: "Karnataka" },
-      { crop: "Wheat", pricePerQuintal: 2400, market: "Demo Market", state: "Karnataka" },
-      { crop: "Maize", pricePerQuintal: 2200, market: "Demo Market", state: "Karnataka" },
-    ];
 
-    res.json({ prices, source: 'demo_data' });
+    // Return combined object with commodity dictionary & prices array
+    res.json({
+      ...commodityMap,
+      prices: pricesList,
+      source: apiResult.success ? 'real_api' : 'demo_data'
+    });
   } catch (error) {
     res.status(500).json({ error: "Internal server error", message: error.message });
   }

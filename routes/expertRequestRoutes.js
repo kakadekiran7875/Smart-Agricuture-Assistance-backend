@@ -87,17 +87,21 @@ function notifyExpert(expert, requestDoc) {
 // POST: Submit expert request
 router.post("/request", async (req, res) => {
   try {
-    const { name, phone, cropType, issue, language, timestamp } = req.body;
+    // Support both frontend (crop, question) and legacy (cropType, issue) field names
+    const name = req.body.name?.toString().trim();
+    const phone = req.body.phone?.toString().trim();
+    const cropType = (req.body.cropType || req.body.crop || 'General Crop').toString().trim();
+    const issue = (req.body.issue || req.body.question || req.body.problem || req.body.message || 'Consultation request').toString().trim();
+    const language = req.body.language || 'en';
+    const preferredTime = req.body.preferredTime || 'Anytime';
+    const timestamp = req.body.timestamp || new Date().toISOString();
 
     // Validate required fields
-    const requiredFields = ['name', 'phone', 'cropType', 'issue'];
-    for (const field of requiredFields) {
-      if (!req.body[field] || !req.body[field].toString().trim()) {
-        return res.status(400).json({
-          success: false,
-          error: `Missing required field: ${field}`
-        });
-      }
+    if (!name || !phone) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required field: name and phone are required'
+      });
     }
 
     // Validate phone number
@@ -133,6 +137,7 @@ router.post("/request", async (req, res) => {
       },
       crop_type: cropType,
       issue_description: issue,
+      preferred_time: preferredTime,
       status: 'pending',
       priority: priority,
       expert_assigned: expert ? {
@@ -181,8 +186,9 @@ router.post("/request", async (req, res) => {
 
     res.json({
       success: true,
+      requestId: requestId,
       request_id: requestId,
-      message: 'Expert request submitted successfully',
+      message: 'Request submitted. Expert will call within 30 minutes.',
       estimated_callback_time: '30 minutes',
       priority: priority,
       expert_assigned: expert ? {

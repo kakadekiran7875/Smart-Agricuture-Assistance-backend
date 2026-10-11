@@ -617,6 +617,11 @@ router.post("/detect", async (req, res) => {
   try {
     let { crop, symptoms, language } = req.body;
 
+    // Convert array symptoms to string if passed as array
+    if (Array.isArray(symptoms)) {
+      symptoms = symptoms.join(', ');
+    }
+
     // Validation: Check if fields are present
     if (!crop || !symptoms) {
       return res.status(400).json({
@@ -625,16 +630,17 @@ router.post("/detect", async (req, res) => {
       });
     }
 
-    // Validation: Check if values are strings
-    if (typeof crop !== 'string' || typeof symptoms !== 'string') {
-      return res.status(400).json({
-        error: "Invalid input parameters",
-        message: "Crop and symptoms must be strings"
-      });
-    }
+    // Ensure crop and symptoms are strings
+    crop = crop.toString().trim();
+    symptoms = symptoms.toString().trim();
 
     // Normalize crop name (capitalize first letter)
-    crop = crop.charAt(0).toUpperCase() + crop.slice(1).toLowerCase();
+    const matchedCrop = SUPPORTED_CROPS.find(c => c.toLowerCase() === crop.toLowerCase());
+    if (matchedCrop) {
+      crop = matchedCrop;
+    } else {
+      crop = crop.charAt(0).toUpperCase() + crop.slice(1).toLowerCase();
+    }
 
     // Validation: Check if crop is supported
     if (!SUPPORTED_CROPS.includes(crop)) {
@@ -675,17 +681,21 @@ router.post("/detect", async (req, res) => {
       console.log(`✅ Pest detection saved: ${detectionId}`);
     } catch (dbError) {
       console.error("⚠️  Database save failed (non-critical):", dbError.message);
-      // Continue even if DB save fails
     }
 
     if (detectedPest) {
       // Pest detected - return full details
+      const pestDisplayName = language === 'mr' ? translateTerm(detectedPest.name, 'mr') : detectedPest.name;
+      const severityDisplay = language === 'mr' ? translateTerm(detectedPest.severity, 'mr') : detectedPest.severity;
+
       res.json({
-        pest: language === 'mr' ? translateTerm(detectedPest.name, 'mr') : detectedPest.name,
+        pestName: `${detectedPest.name} (${detectedPest.scientificName})`,
+        pest: pestDisplayName,
         description: detectedPest.description,
         scientificName: detectedPest.scientificName,
-        severity: language === 'mr' ? translateTerm(detectedPest.severity, 'mr') : detectedPest.severity,
+        severity: severityDisplay,
         affectedCrops: detectedPest.affectedCrops,
+        controlMeasures: detectedPest.treatment,
         treatment: detectedPest.treatment,
         prevention: detectedPest.prevention,
         message: language === 'mr' ? "कीटक यशस्वीरित्या ओळखला गेला" : "Pest detected successfully"
@@ -695,7 +705,13 @@ router.post("/detect", async (req, res) => {
     } else {
       // No pest detected
       res.json({
+        pestName: language === 'mr' ? "कोणताही कीटक आढळला नाही" : "No pest detected",
         pest: language === 'mr' ? "कोणताही कीटक आढळला नाही" : "No pest detected",
+        severity: "None",
+        controlMeasures: [
+          language === 'mr' ? "नियमित पीक तपासणी आणि शेतीची स्वच्छता राखा" : "Maintain regular crop inspection and field hygiene",
+          language === 'mr' ? "जैविक कीडनाशकांचा वापर करा" : "Use biological pest control or neem oil if symptoms persist"
+        ],
         message: language === 'mr' ? "दिलेल्या लक्षणांच्या आधारे कोणताही विशिष्ट कीटक ओळखला गेला नाही. तुमच्या पिकांवर लक्ष ठेवणे सुरू ठेवा." : "Based on the symptoms provided, no specific pest was identified. Continue monitoring your crops.",
         recommendation: language === 'mr' ? "नियमित पीक तपासणी आणि शेतीची स्वच्छता राखा" : "Maintain regular crop inspection and field hygiene"
       });
