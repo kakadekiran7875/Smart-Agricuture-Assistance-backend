@@ -14,7 +14,8 @@ const geocodeCache = new Map();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_CACHE_SIZE = 1000;
 
-// Nominatim Configuration
+// Reverse Geocoding Configuration
+const LOCATIONIQ_BASE_URL = process.env.LOCATIONIQ_BASE_URL || 'https://us1.locationiq.com/v1/reverse';
 const NOMINATIM_BASE_URL = process.env.NOMINATIM_BASE_URL || 'https://nominatim.openstreetmap.org/reverse';
 const USER_AGENT = process.env.GEOCODING_USER_AGENT || 'SmartAgricultureAssistant/1.0 (https://smartagri.org; contact@smartagri.org)';
 const TIMEOUT_MS = parseInt(process.env.GEOCODING_TIMEOUT_MS, 10) || 8000;
@@ -140,57 +141,98 @@ export async function reverseGeocode(latitude, longitude) {
     geocodeCache.delete(cacheKey);
   }
 
-  try {
-    const response = await axios.get(NOMINATIM_BASE_URL, {
-      params: {
-        format: 'jsonv2',
-        lat: lat,
-        lon: lon,
-        addressdetails: 1
-      },
-      headers: {
-        'User-Agent': USER_AGENT,
-        'Accept': 'application/json'
-      },
-      timeout: TIMEOUT_MS
-    });
+  const locationIqKey = process.env.LOCATIONIQ_API_KEY ? process.env.LOCATIONIQ_API_KEY.trim() : null;
+  let rawData = null;
+  let providerUsed = 'none';
 
-    if (!response.data || response.data.error) {
-      const errMessage = response.data?.error || 'No location details found for coordinates';
-      const error = new Error(errMessage);
-      error.status = 404;
-      throw error;
+  // 1. Attempt LocationIQ Reverse Geocoding if API Key is configured
+  if (locationIqKey) {
+    try {
+      const response = await axios.get(LOCATIONIQ_BASE_URL, {
+        params: {
+          key: locationIqKey,
+          lat: lat,
+          lon: lon,
+          format: 'json',
+          addressdetails: 1,
+          normalizeaddress: 1
+        },
+        headers: {
+          'Accept': 'application/json'
+        },
+        timeout: TIMEOUT_MS
+      });
+
+      if (response.data && !response.data.error) {
+        rawData = response.data;
+        providerUsed = 'LocationIQ';
+      }
+    } catch (locIqErr) {
+      // Do not expose or log the private API key
+      const status = locIqErr.response?.status;
+      console.warn(`⚠️ [LocationIQ] Reverse geocoding failed (HTTP ${status || 'timeout'}): ${locIqErr.message}. Falling back to OpenStreetMap Nominatim.`);
     }
-
-    const normalized = normalizeLocationData(response.data, lat, lon);
-
-    // Save in cache (manage size)
-    if (geocodeCache.size >= MAX_CACHE_SIZE) {
-      const firstKey = geocodeCache.keys().next().value;
-      geocodeCache.delete(firstKey);
-    }
-    geocodeCache.set(cacheKey, { timestamp: now, data: normalized });
-
-    return normalized;
-
-  } catch (error) {
-    if (error.response?.status === 404 || error.status === 404) {
-      const err = new Error('No address found for the provided coordinates.');
-      err.status = 404;
-      throw err;
-    }
-
-    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-      const err = new Error('Reverse geocoding provider request timed out. Please try again.');
-      err.status = 504;
-      throw err;
-    }
-
-    console.error('❌ Reverse geocoding service error:', error.message);
-    const serviceError = new Error('Unable to resolve address from coordinates at this time.');
-    serviceError.status = 503;
-    throw serviceError;
   }
+
+  // 2. Query OpenStreetMap Nominatim if LocationIQ wasn't used or failed
+  if (!rawData) {
+    try {
+      const response = await axios.get(NOMINATIM_BASE_URL, {
+        params: {
+          format: 'jsonv2',
+          lat: lat,
+          lon: lon,
+          addressdetails: 1
+        },
+        headers: {
+          'User-Agent': USER_AGENT,
+          'Accept': 'application/json'
+        },
+        timeout: TIMEOUT_MS
+      });
+
+      if (response.data && !response.data.error) {
+        rawData = response.data;
+        providerUsed = 'Nominatim';
+      } else {
+        const errMessage = response.data?.error || 'No location details found for coordinates';
+        const error = new Error(errMessage);
+        error.status = 404;
+        throw error;
+      }
+    } catch (nomErr) {
+      if (nomErr.response?.status === 404 || nomErr.status === 404) {
+        const err = new Error('No address found for the provided coordinates.');
+        err.status = 404;
+        throw err;
+      }
+
+      if (nomErr.code === 'ECONNABORTED' || nomErr.message.includes('timeout')) {
+        const err = new Error('Reverse geocoding provider request timed out. Please try again.');
+        err.status = 504;
+        throw err;
+      }
+
+      console.error('❌ Reverse geocoding service error:', nomErr.message);
+      const serviceError = new Error('Unable to resolve address from coordinates at this time.');
+      serviceError.status = 503;
+      throw serviceError;
+    }
+  }
+
+  const normalized = normalizeLocationData(rawData, lat, lon);
+  if (providerUsed) {
+    normalized.provider = providerUsed;
+  }
+
+  // Save in cache (manage size)
+  if (geocodeCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = geocodeCache.keys().next().value;
+    geocodeCache.delete(firstKey);
+  }
+  geocodeCache.set(cacheKey, { timestamp: now, data: normalized });
+
+  return normalized;
 }
 
 export default {
