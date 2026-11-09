@@ -238,7 +238,8 @@ function analyzeImageFallback(filePath, fileSize, filename) {
 }
 
 // POST: Disease Detection endpoint with error handling for multer
-router.post("/", (req, res, next) => {
+// Supports both '/' and '/detect' for route aliases
+router.post(["/", "/detect"], (req, res, next) => {
   upload.single('image')(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       return res.status(400).json({

@@ -52,7 +52,8 @@ async function fetchRealMarketPrices(commodity, state) {
 // GET: Get market prices
 router.get("/prices", async (req, res) => {
   try {
-    const { commodity, state } = req.query;
+    const commodity = req.query.commodity || req.query.crop;
+    const state = req.query.state || req.query.location || req.query.market;
     
     // Standard base commodity dictionary with realistic default rates
     const commodityMap = {

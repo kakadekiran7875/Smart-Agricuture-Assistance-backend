@@ -203,10 +203,13 @@ function isStoreOpen(hours) {
   return todayHours !== 'Closed' && todayHours !== '';
 }
 
-// POST: Find nearby stores
-router.post("/nearby", async (req, res) => {
+// Handler function for nearby stores (supports both POST and GET)
+const handleNearbyStores = async (req, res) => {
   try {
-    const { latitude, longitude, radius, store_type } = req.body;
+    const latitude = req.body?.latitude ?? req.query?.lat ?? req.query?.latitude;
+    const longitude = req.body?.longitude ?? req.query?.lng ?? req.query?.longitude ?? req.query?.lon;
+    const radius = req.body?.radius ?? req.query?.radius ?? 10;
+    const store_type = req.body?.store_type ?? req.query?.store_type ?? req.query?.type ?? 'all';
 
     // Validate required fields
     if (!latitude || !longitude) {
@@ -220,7 +223,7 @@ router.post("/nearby", async (req, res) => {
     const lon = parseFloat(longitude);
     const searchRadius = parseInt(radius) || 10; // Default 10 km
 
-    console.log(`🏪 Nearby stores request`);
+    console.log(`🏪 Nearby stores request [${req.method}]`);
     console.log(`📍 Location: ${lat}, ${lon}`);
     console.log(`📏 Radius: ${searchRadius} km`);
     console.log(`🏷️  Type: ${store_type || 'all'}`);
@@ -329,7 +332,11 @@ router.post("/nearby", async (req, res) => {
       message: error.message
     });
   }
-});
+};
+
+// Mount both POST and GET endpoints for nearby stores
+router.post("/nearby", handleNearbyStores);
+router.get("/nearby", handleNearbyStores);
 
 // GET: Get store by ID
 router.get("/:id", async (req, res) => {

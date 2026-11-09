@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 
@@ -20,6 +21,8 @@ import expertRoutes from "./routes/expertRoutes.js";
 import storeRoutes from "./routes/storeRoutes.js";
 import expertRequestRoutes from "./routes/expertRequestRoutes.js";
 import systemConfigRoutes from "./routes/systemConfigRoutes.js";
+import authRoutes, { seedDemoUser } from "./routes/authRoutes.js";
+import locationRoutes from "./routes/locationRoutes.js";
 
 const app = express();
 
@@ -50,9 +53,10 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie']
 }));
 app.use(express.json());
+app.use(cookieParser());
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -118,6 +122,13 @@ if (isCloudDeploy && isLocalhostUri) {
       } catch (idxErr) {
         console.log(`ℹ️  Index setup note: ${idxErr.message}`);
       }
+
+      // Ensure demo farmer account is seeded in MongoDB
+      try {
+        await seedDemoUser();
+      } catch (seedErr) {
+        console.warn(`⚠️  Demo account seed warning: ${seedErr.message}`);
+      }
     })
     .catch((err) => {
       console.log("⚠️  MongoDB not connected - Running without database");
@@ -159,6 +170,16 @@ app.get("/", (req, res) => {
     frontendUrl: `http://${process.env.FRONTEND_IP || 'localhost'}:3000`,
     endpoints: {
       health: "/health (GET)",
+      authRegister: "/api/auth/register (POST)",
+      authLogin: "/api/auth/login (POST)",
+      authRefresh: "/api/auth/refresh (POST)",
+      authLogout: "/api/auth/logout (POST)",
+      authMe: "/api/auth/me (GET - Protected)",
+      authProfile: "/api/auth/profile (GET/PUT - Protected)",
+      authChangePassword: "/api/auth/change-password (POST - Protected)",
+      authForgotPassword: "/api/auth/forgot-password (POST)",
+      authResetPassword: "/api/auth/reset-password (POST)",
+      reverseGeocode: "/api/location/reverse-geocode (POST)",
       soil: "/api/soil/analyze (POST)",
       fertilizer: "/api/fertilizer/recommend (POST)",
       pest: "/api/pest/detect (POST)",
@@ -197,6 +218,8 @@ app.get("/", (req, res) => {
 });
 
 // 🌾 All API routes
+app.use("/api/auth", authRoutes);
+app.use("/auth", authRoutes);
 app.use("/api/crop", cropRoutes);
 app.use("/api/crops", cropRoutes);           // Frontend alias
 app.use("/api/fertilizer", fertilizerRoutes);
@@ -207,10 +230,12 @@ app.use("/api/weather", weatherRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/detect", diseaseRoutes);
 app.use("/api/detect", diseaseRoutes);       // Frontend alias
+app.use("/api/disease", diseaseRoutes);      // Documented alternative alias
 app.use("/api/chatbot", chatbotRoutes);
 app.use("/api/expert", expertRequestRoutes); // Handles /api/expert/request, /api/expert/requests/all
 app.use("/api/expert", expertRoutes);        // Handles /api/expert/list, /api/expert/:id, etc.
 app.use("/api/stores", storeRoutes);
+app.use("/api/location", locationRoutes);
 app.use("/api/expert-request", expertRequestRoutes);
 app.use("/api/system", systemConfigRoutes);
 

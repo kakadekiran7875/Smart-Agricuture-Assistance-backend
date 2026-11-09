@@ -15,6 +15,10 @@ import MarketPrice from './MarketPrice.js';
 import ChatHistory from './ChatHistory.js';
 import Query from './Query.js';
 import SystemConfig from './SystemConfig.js';
+import User from './User.js';
+import RefreshSession from './RefreshSession.js';
+import PasswordResetToken from './PasswordResetToken.js';
+import OtpVerification from './OtpVerification.js';
 
 export {
   Expert,
@@ -28,7 +32,11 @@ export {
   MarketPrice,
   ChatHistory,
   Query,
-  SystemConfig
+  SystemConfig,
+  User,
+  RefreshSession,
+  PasswordResetToken,
+  OtpVerification
 };
 
 export default {
@@ -43,5 +51,9 @@ export default {
   MarketPrice,
   ChatHistory,
   Query,
-  SystemConfig
+  SystemConfig,
+  User,
+  RefreshSession,
+  PasswordResetToken,
+  OtpVerification
 };

@@ -13,7 +13,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_K
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 
 // API URLs
-const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash-latest", "gemini-pro-latest"];
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 
 // System prompts for agricultural assistant
@@ -51,33 +51,41 @@ Provide practical, actionable advice in simple language. Be supportive and encou
 
 Response in ${langName}:`;
 
-    const response = await axios.post(
-      `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
-      {
-        contents: [{
-          parts: [{ text: prompt }]
-        }],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 600,
-          topP: 0.8
-        }
-      },
-      {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 6000
-      }
-    );
+    // Try available Gemini models
+    for (const model of GEMINI_MODELS) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+        const response = await axios.post(
+          url,
+          {
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 600,
+              topP: 0.8
+            }
+          },
+          {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 5000
+          }
+        );
 
-    if (response.data.candidates && response.data.candidates[0]?.content?.parts[0]?.text) {
-      return {
-        success: true,
-        response: response.data.candidates[0].content.parts[0].text.trim(),
-        source: 'gemini'
-      };
+        if (response.data.candidates && response.data.candidates[0]?.content?.parts[0]?.text) {
+          return {
+            success: true,
+            response: response.data.candidates[0].content.parts[0].text.trim(),
+            source: 'gemini',
+            model: model
+          };
+        }
+      } catch (mErr) {
+        // try next model
+        continue;
+      }
     }
 
-    throw new Error("Invalid response from Gemini API");
+    throw new Error("All Gemini models unavailable");
   } catch (error) {
     console.error("❌ Gemini chatbot error:", error.message);
     return { success: false, error: error.message };
@@ -106,10 +114,11 @@ async function callOpenAIChatbot(message, conversationHistory) {
 
     messages.push({ role: "user", content: message });
 
+    // Use modern gpt-4o-mini (gpt-3.5-turbo is deprecated)
     const response = await axios.post(
       OPENAI_API_URL,
       {
-        model: "gpt-3.5-turbo",
+        model: "gpt-4o-mini",
         messages: messages,
         max_tokens: 600,
         temperature: 0.7
@@ -127,7 +136,7 @@ async function callOpenAIChatbot(message, conversationHistory) {
       success: true,
       response: response.data.choices[0].message.content,
       source: 'openai',
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4o-mini',
       usage: response.data.usage
     };
   } catch (error) {
@@ -243,7 +252,7 @@ router.post("/advice", async (req, res) => {
     const response = await axios.post(
       OPENAI_API_URL,
       {
-        model: "gpt-3.5-turbo",
+        model: "gpt-4o-mini",
         messages: [
           { role: "system", content: SYSTEM_PROMPT_OPENAI },
           { role: "user", content: prompt }
