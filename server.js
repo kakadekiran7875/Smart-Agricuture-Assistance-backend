@@ -37,18 +37,26 @@ const allowedOrigins = [
   'http://localhost:8080',
   'http://127.0.0.1:3000',
   'http://127.0.0.1:5173',
-  'http://127.0.0.1:8080'
+  'http://127.0.0.1:8080',
+  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [])
 ];
 
 app.use(cors({
   origin: function(origin, callback) {
     // Allow requests with no origin (mobile apps, curl, etc.)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.DEBUG === 'true') {
+
+    // Allow Netlify deployments (*.netlify.app), local origins, and explicit FRONTEND_URL
+    if (
+      allowedOrigins.indexOf(origin) !== -1 ||
+      origin.endsWith('.netlify.app') ||
+      origin.includes('netlify') ||
+      process.env.DEBUG === 'true'
+    ) {
       return callback(null, true);
     }
-    // In production, you might want to block unknown origins
-    // For now, allow all in development
+
+    // Default allow with reflection for credentials support
     callback(null, true);
   },
   credentials: true,
