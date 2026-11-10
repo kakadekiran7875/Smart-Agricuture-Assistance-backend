@@ -12,12 +12,14 @@ const router = express.Router();
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 
-// API URLs - Active Gemini Models
+// API URLs - Active Gemini Models (ordered by stability and speed)
 const GEMINI_MODELS = [
+  "gemini-3.1-flash-lite-preview",
+  "gemini-3.1-flash-lite",
   "gemini-3.5-flash-lite",
   "gemini-flash-lite-latest",
-  "gemini-3.8-flash",
-  "gemini-3.5-flash"
+  "gemini-3.7-flash",
+  "gemma-4-31b-it"
 ];
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 
@@ -45,10 +47,25 @@ async function callGeminiChatbot(message, language) {
       throw new Error("Gemini API key not configured");
     }
 
-    const langNames = { en: "English", hi: "Hindi", mr: "Marathi", kn: "Kannada" };
-    const langName = langNames[language] || "English";
+    // Smart language detection: auto-detect if user requests Marathi or writes in Devanagari
+    let targetLang = language || 'en';
+    const lowerMsg = (message || '').toLowerCase();
+    const hasDevanagari = /[\u0900-\u097F]/.test(message);
+    const wantsMarathi = lowerMsg.includes('marathi') || lowerMsg.includes('मराठी') || lowerMsg.includes('bol na') || lowerMsg.includes('sang na') || lowerMsg.includes('kay ') || lowerMsg.includes('kasa ');
+    const wantsHindi = lowerMsg.includes('hindi') || lowerMsg.includes('हिन्दी') || lowerMsg.includes('batao');
 
-    const prompt = `You are an expert agricultural assistant for Indian farmers. Answer in ${langName} language.
+    if (wantsMarathi || (hasDevanagari && !wantsHindi)) {
+      targetLang = 'mr';
+    } else if (wantsHindi) {
+      targetLang = 'hi';
+    }
+
+    const langNames = { en: "English", hi: "Hindi", mr: "Marathi (मराठी)", kn: "Kannada" };
+    const langName = langNames[targetLang] || "English";
+
+    const prompt = `You are an expert, friendly agricultural assistant for Indian farmers.
+Answer naturally in ${langName} language.
+If the farmer asks in Marathi or Romanized Marathi (like 'marathi madhe bol'), always reply warmly in Marathi (मराठी).
 
 Farmer's Question: ${message}
 
@@ -190,18 +207,20 @@ router.post("/chat", async (req, res) => {
       };
     }
 
-    // Save to database
-    try {
-      const chatLog = new ChatHistory({
-        question: message,
-        answer: result.response,
-        language: language,
-        source: result.source || 'gemini'
-      });
-      await chatLog.save();
-      console.log('✅ Chatbot conversation saved to database');
-    } catch (dbError) {
-      console.log('⚠️ Database save failed (continuing):', dbError.message);
+    // Save to database only if MongoDB is actively connected
+    if (mongoose.connection && mongoose.connection.readyState === 1) {
+      try {
+        const chatLog = new ChatHistory({
+          question: message,
+          answer: result.response,
+          language: language,
+          source: result.source || 'gemini'
+        });
+        await chatLog.save();
+        console.log('✅ Chatbot conversation saved to database');
+      } catch (dbError) {
+        console.log('⚠️ Database save note:', dbError.message);
+      }
     }
 
     res.json({
