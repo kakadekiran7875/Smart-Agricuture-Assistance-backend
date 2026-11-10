@@ -202,6 +202,28 @@ async function callPlantIdAPI(imagePath) {
 }
 
 /**
+ * Robust JSON parser for LLM responses
+ */
+function extractJsonFromText(text) {
+  if (!text) return null;
+  const match = text.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      return JSON.parse(match[0]);
+    } catch (e) {
+      try {
+        // Strip non-printable control characters that break JSON.parse
+        const cleaned = match[0].replace(/[\u0000-\u001F\u007F-\u009F]+/g, ' ');
+        return JSON.parse(cleaned);
+      } catch (e2) {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * High-Accuracy Multimodal Crop Disease Detection using Google Gemini Vision AI
  * Analyzes the actual uploaded plant leaf image with cutting-edge computer vision
  */
@@ -249,36 +271,37 @@ Return your response strictly as a valid raw JSON object (without markdown code 
             temperature: 0.2,
             maxOutputTokens: 800
           }
-        }, { timeout: 15000 });
+        }, { timeout: 22000 });
 
         const rawText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
         if (rawText) {
-          const clean = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
-          const parsed = JSON.parse(clean);
+          const parsed = extractJsonFromText(rawText);
+          if (parsed && (parsed.disease || parsed.crop)) {
+            const organic = parsed.organicTreatment || 'निंबोळी अर्क ५% किंवा जैविक बुरशीनाशकाचा वापर करा.';
+            const chemical = parsed.chemicalTreatment || 'कृषी तज्ज्ञांच्या सल्ल्यानुसार योग्य बुरशीनाशकाची फवारणी करावी.';
+            const combinedTreatment = `${organic} • रासायनिक उपाय: ${chemical}`;
 
-          const organic = parsed.organicTreatment || 'निंबोळी अर्क ५% किंवा जैविक बुरशीनाशकाचा वापर करा.';
-          const chemical = parsed.chemicalTreatment || 'कृषी तज्ज्ञांच्या सल्ल्यानुसार योग्य बुरशीनाशकाची फवारणी करावी.';
-          const combinedTreatment = `${organic} • रासायनिक उपाय: ${chemical}`;
-
-          return {
-            success: true,
-            model: model,
-            crop: parsed.crop || 'Crop',
-            disease: parsed.disease || 'Disease Detected',
-            confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.92,
-            isHealthy: !!parsed.isHealthy,
-            symptoms: Array.isArray(parsed.symptoms) ? parsed.symptoms : [parsed.symptoms].filter(Boolean),
-            treatment: {
-              organic: organic,
-              chemical: chemical
-            },
-            treatment_text: combinedTreatment,
-            recommendation: chemical,
-            prevention: parsed.prevention || 'चांगल्या शेती पद्धती आणि पीक फेरपालट करा.',
-            preventive_measures: parsed.prevention || 'शेतात स्वच्छता राखा आणि वेळेवर फवारणी करा.'
-          };
+            return {
+              success: true,
+              model: model,
+              crop: parsed.crop || 'Crop',
+              disease: parsed.disease || 'Disease Detected',
+              confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.92,
+              isHealthy: !!parsed.isHealthy,
+              symptoms: Array.isArray(parsed.symptoms) ? parsed.symptoms : [parsed.symptoms].filter(Boolean),
+              treatment: {
+                organic: organic,
+                chemical: chemical
+              },
+              treatment_text: combinedTreatment,
+              recommendation: chemical,
+              prevention: parsed.prevention || 'चांगल्या शेती पद्धती आणि पीक फेरपालट करा.',
+              preventive_measures: parsed.prevention || 'शेतात स्वच्छता राखा आणि वेळेवर फवारणी करा.'
+            };
+          }
         }
       } catch (mErr) {
+        console.warn(`⚠️ [Gemini Vision] ${model} attempt note:`, mErr.response?.data?.error?.message || mErr.message);
         continue;
       }
     }
