@@ -12,8 +12,13 @@ const router = express.Router();
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 
-// API URLs
-const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash-latest", "gemini-pro-latest"];
+// API URLs - Active Gemini Models
+const GEMINI_MODELS = [
+  "gemini-3.5-flash-lite",
+  "gemini-flash-lite-latest",
+  "gemini-3.8-flash",
+  "gemini-3.5-flash"
+];
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 
 // System prompts for agricultural assistant
@@ -67,7 +72,7 @@ Response in ${langName}:`;
           },
           {
             headers: { 'Content-Type': 'application/json' },
-            timeout: 5000
+            timeout: 12000
           }
         );
 
