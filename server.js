@@ -89,6 +89,7 @@ const isLocalhostUri = !rawMongoUri ||
   rawMongoUri.includes('localhost') ||
   rawMongoUri.includes('127.0.0.1') ||
   rawMongoUri.includes('::1');
+const isLocalFallback = isLocalhostUri;
 
 const MONGO_URI = rawMongoUri ||
   (process.env.DATABASE_IP ? `mongodb://${process.env.DATABASE_IP}:27017/Demo` : "mongodb://localhost:27017/Demo");
