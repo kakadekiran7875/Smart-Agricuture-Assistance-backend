@@ -20,12 +20,27 @@ const NOMINATIM_BASE_URL = process.env.NOMINATIM_BASE_URL || 'https://nominatim.
 const USER_AGENT = process.env.GEOCODING_USER_AGENT || 'SmartAgricultureAssistant/1.0 (https://smartagri.org; contact@smartagri.org)';
 const TIMEOUT_MS = parseInt(process.env.GEOCODING_TIMEOUT_MS, 10) || 8000;
 
+// Recognized Maharashtra districts for disambiguation
+const MH_DISTRICTS = new Set([
+  'ahmednagar', 'ahilyanagar', 'akola', 'amravati', 'chhatrapati sambhajinagar',
+  'aurangabad', 'beed', 'bhandara', 'buldhana', 'chandrapur', 'dhule',
+  'gadchiroli', 'gondia', 'hingoli', 'jalgaon', 'jalna', 'kolhapur',
+  'latur', 'mumbai', 'mumbai city', 'mumbai suburban', 'nagpur', 'nanded',
+  'nandurbar', 'nashik', 'dharashiv', 'osmanabad', 'palghar', 'parbhani',
+  'pune', 'raigad', 'ratnagiri', 'sangli', 'satara', 'sindhudurg',
+  'solapur', 'thane', 'wardha', 'washim', 'yavatmal'
+]);
+
 /**
  * Clean and normalize district names (e.g. "Pune District" -> "Pune")
  */
 function cleanDistrictName(name) {
   if (!name) return '';
-  return name.replace(/\s+District$/i, '').replace(/\s+Zilla$/i, '').trim();
+  return name
+    .replace(/\s+District$/i, '')
+    .replace(/\s+Zilla$/i, '')
+    .replace(/\s+Division$/i, '')
+    .trim();
 }
 
 /**
@@ -35,6 +50,7 @@ function cleanTalukaName(name) {
   if (!name) return '';
   return name
     .replace(/\s+Subdistrict$/i, '')
+    .replace(/\s+Sub-district$/i, '')
     .replace(/\s+Tehsil$/i, '')
     .replace(/\s+Taluka$/i, '')
     .replace(/\s+Taluk$/i, '')
@@ -42,7 +58,8 @@ function cleanTalukaName(name) {
 }
 
 /**
- * Normalize provider address data to Smart Agriculture Assistant standard location format
+ * Normalize provider address data to Smart Agriculture Assistant standard location format.
+ * Follows official LocationIQ documentation and does NOT blindly assume county is always Taluka or District.
  */
 export function normalizeLocationData(providerData, latitude, longitude) {
   const address = providerData?.address || {};
@@ -50,46 +67,71 @@ export function normalizeLocationData(providerData, latitude, longitude) {
   // 1. State
   const state = (address.state || address.province || address.region || '').trim();
 
-  // 2. District
+  // 2. District & Taluka Disambiguation (Rule: Do not assume county is always Taluka or District)
   let rawDistrict = address.state_district || address.district || '';
   let district = cleanDistrictName(rawDistrict);
 
-  // 3. Taluka / Tehsil / Subdistrict
-  // In India OSM data, county frequently represents the Taluka/Tehsil (e.g. Daund, Parner, Haveli)
-  let rawTaluka = address.county || address.subdistrict || address.tehsil || address.taluk || address.taluka || address.municipality || '';
-  let taluka = cleanTalukaName(rawTaluka);
+  // Check explicit subdistrict / tehsil tags from LocationIQ
+  let rawExplicitTaluka = address.subdistrict || address.tehsil || address.taluk || address.taluka || address.sub_district || address.municipality || '';
+  let taluka = cleanTalukaName(rawExplicitTaluka);
 
-  // Fallback check: If district was missing but county exists and doesn't look like a subdistrict
-  if (!district && address.county && !address.county.toLowerCase().includes('subdistrict')) {
-    district = cleanDistrictName(address.county);
-    taluka = '';
+  const rawCounty = (address.county || '').trim();
+  const cleanedCounty = cleanDistrictName(cleanTalukaName(rawCounty));
+  const lowerCounty = cleanedCounty.toLowerCase();
+
+  // If district is not explicitly found, inspect county
+  if (!district && rawCounty) {
+    const isDistrictName = MH_DISTRICTS.has(lowerCounty) ||
+      rawCounty.toLowerCase().includes('district') ||
+      rawCounty.toLowerCase().includes('zilla');
+
+    if (isDistrictName || rawExplicitTaluka) {
+      // If county matches a known district or an explicit taluka was already found, county is the District
+      district = cleanedCounty;
+    } else if (rawCounty.toLowerCase().includes('tehsil') || rawCounty.toLowerCase().includes('taluka') || rawCounty.toLowerCase().includes('subdistrict')) {
+      // County explicitly designates a tehsil/taluka
+      taluka = cleanedCounty;
+    } else {
+      // Default county to District if neither district nor taluka is determined
+      district = cleanedCounty;
+    }
   }
 
-  // Ensure district is not mistakenly duplicated as taluka
+  // If taluka is still empty and county was NOT assigned to district
+  if (!taluka && rawCounty && district && lowerCounty !== district.toLowerCase()) {
+    // Only use county as taluka if it is not a division and not another known district
+    if (!rawCounty.toLowerCase().includes('division')) {
+      taluka = cleanedCounty;
+    }
+  }
+
+  // Ensure district is never duplicated as taluka
   if (taluka && district && taluka.toLowerCase() === district.toLowerCase()) {
     taluka = '';
   }
 
-  // 4. Village / Town / City
+  // 3. Village / Town / City
+  // With normalizecity=1 and zoom=18, LocationIQ provides precise local resolution
   const village = (
     address.village ||
     address.hamlet ||
     address.isolated_dwelling ||
-    address.town ||
-    address.city ||
     address.suburb ||
     address.neighbourhood ||
+    address.town ||
+    address.city ||
     ''
   ).trim();
 
-  // 5. PIN Code
-  const pinCode = (address.postcode || address.postal_code || '').trim();
+  // 4. PIN Code (Cleaned to 6 digits)
+  const rawPin = address.postcode || address.postal_code || address.pin || '';
+  const pinCode = String(rawPin).replace(/[^\d]/g, '').slice(0, 6);
 
-  // 6. Country
+  // 5. Country
   const country = (address.country || 'India').trim();
 
-  // 7. Full Address (Formatted display name)
-  const fullAddress = (providerData.display_name || [village, taluka, district, state, country].filter(Boolean).join(', ')).trim();
+  // 6. Full Address (Formatted display name in English)
+  const fullAddress = (providerData.display_name || [village, taluka, district, state, pinCode, country].filter(Boolean).join(', ')).trim();
 
   return {
     state: state || null,
@@ -155,7 +197,11 @@ export async function reverseGeocode(latitude, longitude) {
           lon: lon,
           format: 'json',
           addressdetails: 1,
-          normalizeaddress: 1
+          normalizeaddress: 1,
+          normalizecity: 1,
+          postaladdress: 1,
+          'accept-language': 'en',
+          zoom: 18
         },
         headers: {
           'Accept': 'application/json'
@@ -182,7 +228,9 @@ export async function reverseGeocode(latitude, longitude) {
           format: 'jsonv2',
           lat: lat,
           lon: lon,
-          addressdetails: 1
+          addressdetails: 1,
+          'accept-language': 'en',
+          zoom: 18
         },
         headers: {
           'User-Agent': USER_AGENT,
