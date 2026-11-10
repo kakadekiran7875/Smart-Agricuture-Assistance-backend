@@ -201,6 +201,94 @@ async function callPlantIdAPI(imagePath) {
   }
 }
 
+/**
+ * High-Accuracy Multimodal Crop Disease Detection using Google Gemini Vision AI
+ * Analyzes the actual uploaded plant leaf image with cutting-edge computer vision
+ */
+async function callGeminiVisionAPI(imagePath, language = 'mr') {
+  try {
+    const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
+    if (!geminiKey) {
+      return { success: false, error: 'Gemini API key not configured' };
+    }
+
+    const langMap = { mr: 'Marathi (मराठी)', hi: 'Hindi (हिन्दी)', en: 'English' };
+    const targetLang = langMap[language] || 'Marathi (मराठी)';
+
+    const imageBuffer = fs.readFileSync(imagePath);
+    const base64Image = imageBuffer.toString('base64');
+    const ext = path.extname(imagePath).toLowerCase();
+    const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+
+    const prompt = `You are a Senior Plant Pathologist and Agricultural Scientist specializing in Indian crops and farming.
+Carefully examine this real crop leaf / plant photo for any diseases, fungus, viral infection, pests, or deficiencies.
+Return your response strictly as a valid raw JSON object (without markdown code blocks, just raw JSON) in the ${targetLang} language with the following keys:
+{
+  "crop": "Name of the crop in ${targetLang} (e.g. टोमॅटो, कापूस, ऊस, कांदा, सोयाबीन, द्राक्षे, बटाटा, गहू, इ.)",
+  "disease": "Exact disease name in ${targetLang} (e.g. करपा / Early Blight, भुरी / Powdery Mildew, डावणी / Downy Mildew, तांबेरा / Rust, किंवा निरोगी पीक / Healthy)",
+  "isHealthy": false,
+  "confidence": 0.93,
+  "symptoms": ["लक्षण १", "लक्षण २", "लक्षण ३"],
+  "organicTreatment": "जैविक किंवा सेंद्रिय उपाय (उदा. निंबोळी अर्क, ताक-हिंग द्रावण किंवा ट्रायकोडर्मा)",
+  "chemicalTreatment": "नेमकी रासायनिक बुरशीनाशक/कीटकनाशक फवारणी व प्रमाण (उदा. मॅनकोझेब २.५ ग्रॅम प्रति लिटर पाणी किंवा रोको २ ग्रॅम/लिटर)",
+  "prevention": "पुढील पिकासाठी प्रतिबंधात्मक उपाय"
+}`;
+
+    const models = ['gemini-flash-lite-latest', 'gemini-3.5-flash-lite', 'gemini-3.5-flash'];
+    for (const model of models) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+        const response = await axios.post(url, {
+          contents: [{
+            parts: [
+              { inline_data: { mime_type: mimeType, data: base64Image } },
+              { text: prompt }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 800
+          }
+        }, { timeout: 15000 });
+
+        const rawText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (rawText) {
+          const clean = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+          const parsed = JSON.parse(clean);
+
+          const organic = parsed.organicTreatment || 'निंबोळी अर्क ५% किंवा जैविक बुरशीनाशकाचा वापर करा.';
+          const chemical = parsed.chemicalTreatment || 'कृषी तज्ज्ञांच्या सल्ल्यानुसार योग्य बुरशीनाशकाची फवारणी करावी.';
+          const combinedTreatment = `${organic} • रासायनिक उपाय: ${chemical}`;
+
+          return {
+            success: true,
+            model: model,
+            crop: parsed.crop || 'Crop',
+            disease: parsed.disease || 'Disease Detected',
+            confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.92,
+            isHealthy: !!parsed.isHealthy,
+            symptoms: Array.isArray(parsed.symptoms) ? parsed.symptoms : [parsed.symptoms].filter(Boolean),
+            treatment: {
+              organic: organic,
+              chemical: chemical
+            },
+            treatment_text: combinedTreatment,
+            recommendation: chemical,
+            prevention: parsed.prevention || 'चांगल्या शेती पद्धती आणि पीक फेरपालट करा.',
+            preventive_measures: parsed.prevention || 'शेतात स्वच्छता राखा आणि वेळेवर फवारणी करा.'
+          };
+        }
+      } catch (mErr) {
+        continue;
+      }
+    }
+    return { success: false, error: 'All vision models failed' };
+  } catch (err) {
+    console.error('❌ Gemini Vision error:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
 // Fallback: Simulate ML model prediction based on image characteristics
 function analyzeImageFallback(filePath, fileSize, filename) {
   console.log("=" .repeat(50));
@@ -278,43 +366,51 @@ router.post(["/", "/detect"], (req, res, next) => {
     let result;
     let analysisMethod = 'fallback';
 
-    // Try real API first if API key is available
-    if (CROP_DIAGNOSIS_API_KEY) {
-      console.log("🌿 Using Plant.id API for real disease detection");
-      const apiResult = await callPlantIdAPI(req.file.path);
+    // 1. First priority: High-Accuracy Google Gemini Multimodal Vision AI
+    console.log("🌿 Analyzing crop image with Google Gemini Vision AI...");
+    const geminiVisionResult = await callGeminiVisionAPI(req.file.path, language);
+
+    if (geminiVisionResult.success) {
+      result = geminiVisionResult;
+      analysisMethod = `gemini_vision (${geminiVisionResult.model})`;
+      console.log(`✅ Gemini Vision Detection: ${result.crop} - ${result.disease} (${(result.confidence * 100).toFixed(1)}%)`);
+    } else {
+      console.log("⚠️ Gemini Vision failed, attempting Plant.id API...");
       
-      if (apiResult.success) {
-        // Use real API result
-        analysisMethod = 'plant_id_api';
+      // 2. Second priority: Plant.id API
+      if (CROP_DIAGNOSIS_API_KEY) {
+        console.log("🌿 Using Plant.id API for real disease detection");
+        const apiResult = await callPlantIdAPI(req.file.path);
         
-        // Find matching disease in database or use API result
-        const matchedDisease = diseases.find(d => 
-          d.disease.toLowerCase().includes(apiResult.disease.toLowerCase()) ||
-          apiResult.disease.toLowerCase().includes(d.disease.toLowerCase())
-        );
-        
-        if (matchedDisease) {
-          result = {
-            ...matchedDisease,
-            confidence: apiResult.confidence,
-            api_disease_name: apiResult.disease
-          };
-        } else {
-          // Use API result with generic treatment
-          result = {
-            disease: apiResult.disease,
-            confidence: apiResult.confidence,
-            treatment: apiResult.suggestions.treatment || 'Consult agricultural expert for specific treatment.',
-            recommendation: apiResult.suggestions.prevention || 'Monitor crop regularly and maintain good practices.',
-            prevention: 'Practice crop rotation, use disease-resistant varieties, maintain field hygiene.',
-            preventive_measures: 'Regular inspection, proper spacing, balanced fertilization.'
-          };
+        if (apiResult.success) {
+          analysisMethod = 'plant_id_api';
+          const matchedDisease = diseases.find(d => 
+            d.disease.toLowerCase().includes(apiResult.disease.toLowerCase()) ||
+            apiResult.disease.toLowerCase().includes(d.disease.toLowerCase())
+          );
+          
+          if (matchedDisease) {
+            result = {
+              ...matchedDisease,
+              confidence: apiResult.confidence,
+              api_disease_name: apiResult.disease
+            };
+          } else {
+            result = {
+              disease: apiResult.disease,
+              confidence: apiResult.confidence,
+              treatment: apiResult.suggestions.treatment || 'Consult agricultural expert for specific treatment.',
+              recommendation: apiResult.suggestions.prevention || 'Monitor crop regularly and maintain good practices.',
+              prevention: 'Practice crop rotation, use disease-resistant varieties, maintain field hygiene.',
+              preventive_measures: 'Regular inspection, proper spacing, balanced fertilization.'
+            };
+          }
         }
-        
-        console.log(`✅ Real API Detection: ${result.disease} (${(result.confidence * 100).toFixed(2)}%)`);
-      } else {
-        console.log("⚠️  API failed, using fallback method");
-        // Fallback to hash-based detection
+      }
+
+      // 3. Third priority: graceful local database fallback
+      if (!result) {
+        console.log("⚠️ Vision APIs unavailable, using fallback database");
         const { diseaseIndex, confidence } = analyzeImageFallback(
           req.file.path,
           req.file.size,
@@ -323,16 +419,6 @@ router.post(["/", "/detect"], (req, res, next) => {
         result = { ...diseases[diseaseIndex], confidence };
         analysisMethod = 'hash_based_fallback';
       }
-    } else {
-      console.log("⚠️  No API key found, using fallback method");
-      // Use hash-based detection
-      const { diseaseIndex, confidence } = analyzeImageFallback(
-        req.file.path,
-        req.file.size,
-        req.file.filename
-      );
-      result = { ...diseases[diseaseIndex], confidence };
-      analysisMethod = 'hash_based_no_api_key';
     }
 
     console.log(`✅ Detection complete: ${result.disease} (${(result.confidence * 100).toFixed(2)}%)`);
@@ -367,12 +453,14 @@ router.post(["/", "/detect"], (req, res, next) => {
 
     // Extract crop name and clean disease name
     const diseaseName = result.disease || 'Unknown Disease';
-    const knownCrops = ['Tomato', 'Potato', 'Rice', 'Wheat', 'Cotton', 'Maize', 'Sugarcane', 'टोमॅटो', 'बटाटा', 'तांदूळ', 'गहू', 'कापूस'];
-    let detectedCrop = 'General Crop';
-    for (const c of knownCrops) {
-      if (diseaseName.toLowerCase().includes(c.toLowerCase())) {
-        detectedCrop = c;
-        break;
+    let detectedCrop = result.crop || 'General Crop';
+    if (!result.crop || result.crop === 'Crop') {
+      const knownCrops = ['Tomato', 'Potato', 'Rice', 'Wheat', 'Cotton', 'Maize', 'Sugarcane', 'Onion', 'Soybean', 'टोमॅटो', 'बटाटा', 'तांदूळ', 'गहू', 'कापूस', 'कांदा', 'सोयाबीन', 'ऊस'];
+      for (const c of knownCrops) {
+        if (diseaseName.toLowerCase().includes(c.toLowerCase())) {
+          detectedCrop = c;
+          break;
+        }
       }
     }
 
