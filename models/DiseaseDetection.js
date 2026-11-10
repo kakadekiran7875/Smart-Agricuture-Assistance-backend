@@ -44,8 +44,15 @@ const diseaseDetectionSchema = new mongoose.Schema({
   },
   analysis_method: {
     type: String,
-    enum: ['plant_id_api', 'hash_based_fallback', 'hash_based_no_api_key', 'manual'],
-    default: 'hash_based_fallback'
+    enum: [
+      'gemini_vision',
+      'gemini_vision_ai',
+      'plant_id_api',
+      'hash_based_fallback',
+      'hash_based_no_api_key',
+      'manual'
+    ],
+    default: 'gemini_vision'
   },
   user_info: {
     ip_address: String,

@@ -372,7 +372,7 @@ router.post(["/", "/detect"], (req, res, next) => {
 
     if (geminiVisionResult.success) {
       result = geminiVisionResult;
-      analysisMethod = `gemini_vision (${geminiVisionResult.model})`;
+      analysisMethod = 'gemini_vision';
       console.log(`✅ Gemini Vision Detection: ${result.crop} - ${result.disease} (${(result.confidence * 100).toFixed(1)}%)`);
     } else {
       console.log("⚠️ Gemini Vision failed, attempting Plant.id API...");
